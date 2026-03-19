@@ -1,6 +1,6 @@
 # AgentWall — Product Requirements Document
 
-**Version:** 0.1 — MVP (OpenClaw adapter)
+**Version:** 0.2 (updated — cross-runtime scope)
 **Status:** Draft
 **Date:** March 2026
 **Tech Stack:** TypeScript · Node ≥ 22 · npm package
@@ -10,23 +10,26 @@
 ## Table of Contents
 
 1. [Product Overview](#1-product-overview)
-2. [Architecture](#2-architecture)
-3. [Functional Requirements](#3-functional-requirements)
-4. [Non-Functional Requirements](#4-non-functional-requirements)
-5. [CLI Reference](#5-cli-reference)
-6. [Default Policy](#6-default-policy)
-7. [Out of Scope for v0.1](#7-out-of-scope-for-v01)
-8. [Success Metrics](#8-success-metrics)
-9. [Open Questions](#9-open-questions)
-10. [Glossary](#10-glossary)
+2. [Competitive Landscape](#2-competitive-landscape)
+3. [Architecture](#3-architecture)
+4. [Functional Requirements](#4-functional-requirements)
+5. [Non-Functional Requirements](#5-non-functional-requirements)
+6. [CLI Reference](#6-cli-reference)
+7. [Default Policy](#7-default-policy)
+8. [Out of Scope for v0.1](#8-out-of-scope-for-v01)
+9. [Success Metrics](#9-success-metrics)
+10. [Open Questions](#10-open-questions)
+11. [Glossary](#11-glossary)
 
 ---
 
 ## 1. Product Overview
 
-AgentWall is a developer tool that sits between a local AI agent and the host machine. When the agent proposes an action — running a shell command, deleting a file, calling an external API — AgentWall intercepts it, checks it against a set of rules, and decides whether to allow it automatically, block it outright, or pause and ask the developer for approval. Every decision is logged so the developer can review exactly what the agent did and why it was permitted or blocked.
+AgentWall is a developer tool that sits between local AI agents and the host machine. When an agent proposes an action — running a shell command, deleting a file, calling an external API — AgentWall intercepts it, checks it against a set of rules, and decides whether to allow it automatically, block it outright, or pause and ask the developer for approval. Every decision is logged so the developer can review exactly what the agent did and why it was permitted or blocked.
 
-> **One-line description:** AgentWall is the approval layer and audit trail between your AI agent and your machine.
+AgentWall works across multiple agent runtimes — OpenClaw, Claude Code, Cursor, and others — from a single policy file and a single audit trail. This cross-runtime unification is the primary value proposition.
+
+> **One-line description:** AgentWall is the unified approval layer and audit trail across all your local AI agents.
 
 ### 1.1 The Problem
 
@@ -35,224 +38,263 @@ AI agents that can use tools are genuinely useful. They are also genuinely risky
 - An agent asked to clean up a project deletes configuration files the developer meant to keep.
 - An agent running tests issues shell commands that reach outside the project directory.
 - An agent browsing the web reads a page with hidden instructions and attempts to read SSH keys.
-- After a long run, the developer has no record of what the agent actually tried to do.
+- After a long run, the developer has no record of what the agent actually tried to do or why.
 
-Existing mitigations do not fully solve this. Docker containers restrict the environment but do not reason about individual commands. Model alignment reduces bad behaviour in general but does not prevent poor decisions in specific local contexts. OpenClaw's built-in tool policy is config-driven and static — it cannot ask the developer a question mid-run or log a structured audit trail.
+Each agent runtime has its own partial solution to this problem. But none of them solve it completely, and none of them work across runtimes. Developers who use Claude Code and Cursor on the same machine today maintain two separate, incompatible permission systems with no shared policy and no unified audit trail.
 
-> **The gap AgentWall fills:** There is no developer-friendly layer that intercepts individual agent actions at runtime, applies explicit rules, asks for approval when needed, and keeps a full record. AgentWall is that layer.
+### 1.2 What Existing Tools Already Do
 
-### 1.2 Target Users
+Understanding what is already built is essential for understanding where AgentWall adds value and where it does not.
 
-**Primary (v0.1):** A developer who runs OpenClaw on their own machine and wants more confidence that the agent will not do something unintended. They are comfortable with the terminal, familiar with YAML, and willing to install an npm package.
+**Claude Code** has allow/deny rules in `settings.json`, PreToolUse hooks that can approve or deny tool calls programmatically via exit code, and four permission modes (normal, auto-accept, plan, bypass). It also ships OS-level sandboxing built on Linux bubblewrap and macOS Seatbelt that enforces filesystem and network isolation at the kernel level and reduces permission prompts by 84% in Anthropic's internal usage.
 
-**Secondary (v0.2+):** Any developer running a local AI agent — Claude Code, Aider, or a custom agent — who wants the same interception and audit capability regardless of which runtime they use.
+**Cursor** requires explicit user approval for every terminal command by default, requires explicit approval for every external MCP tool call, and supports `beforeMCPExecution` hooks in `~/.cursor/hooks.json` for custom interception logic. Cursor explicitly documents that its allowlist feature is not a security control — bypasses are possible.
 
-### 1.3 Goals for v0.1
+**OpenClaw** has a tool policy system with allow/deny/ask rules per tool type, a Docker sandbox for non-main sessions, and a built-in exec approval protocol over WebSocket that external clients can participate in without modifying OpenClaw's source code.
+
+### 1.3 The Three Gaps AgentWall Fills
+
+**Gap 1 — No cross-runtime unified policy.** Claude Code's `settings.json` only works for Claude Code. Cursor's allowlist only works in Cursor. OpenClaw's tool policy only works in OpenClaw. Developers who use multiple agents maintain multiple separate, incompatible policy systems. AgentWall provides one policy file that enforces the same rules across every connected runtime simultaneously.
+
+**Gap 2 — No structured cross-runtime audit trail.** Cursor explicitly documents that it provides limited visibility into what an agent has executed during a session. Claude Code's hooks produce whatever logging the developer writes manually. OpenClaw has session transcripts but they are per-agent and not structured for audit replay. No runtime provides a unified, structured, replayable log covering all agent activity across all runtimes. AgentWall does.
+
+**Gap 3 — Known reliability problems in existing systems.** Claude Code's deny rules for Read and Write operations have documented bugs as of February 2026, with regressions reported in v2.0.56 and still unresolved. Cursor's allowlist is explicitly not a security control. AgentWall's policy evaluation is implemented once, tested independently, and applies consistently regardless of which runtime is in use.
+
+### 1.4 What AgentWall Does Not Try to Replace
+
+AgentWall does not try to out-sandbox Anthropic's bubblewrap/Seatbelt implementation or OpenClaw's Docker isolation. OS-level sandboxing enforces rules at the kernel level — AgentWall cannot match that. Developers should use both: runtime-native sandboxing for hard OS-level enforcement, and AgentWall for unified policy, structured logging, and cross-runtime consistency.
+
+### 1.5 Target Users
+
+**Primary:** A developer who uses one or more local AI agents — Claude Code, Cursor, OpenClaw, or any MCP-compatible agent — and wants a single place to define what those agents are allowed to do, with a replayable record of everything that happened. They are comfortable with the terminal, familiar with YAML, and willing to install an npm package.
+
+**Secondary:** A team that wants consistent agent safety policies enforced across all developers' machines, with a shared policy file checked into source control.
+
+### 1.6 Goals for v0.1
 
 1. A developer can install AgentWall with a single npm command and have it running in under five minutes.
-2. AgentWall intercepts every exec tool call that OpenClaw's agent proposes before it executes.
-3. Developers can define allow, deny, and ask rules in a plain YAML file with no programming required.
-4. When an action requires approval, the developer sees a clear terminal prompt and can approve or block with a single keypress.
-5. Every action and every decision is written to a log file. The developer can replay the session at any time.
-6. AgentWall introduces no measurable friction for low-risk actions that pass policy automatically.
+2. AgentWall intercepts exec tool calls from OpenClaw using its native WebSocket exec approval protocol.
+3. AgentWall intercepts tool calls from Claude Code using PreToolUse hooks.
+4. Developers define allow, deny, and ask rules in a single plain YAML file that applies across all connected runtimes.
+5. When an action requires approval, the developer sees a clear terminal prompt and can approve or block with a single keypress.
+6. Every action and every decision — regardless of which runtime produced it — is written to a single log file. The developer can replay the session at any time.
+7. AgentWall adds no measurable latency to low-risk actions that pass policy automatically.
 
-### 1.4 Non-Goals for v0.1
+### 1.7 Non-Goals for v0.1
 
-- AgentWall does not intercept file read or write operations. Only shell exec calls are covered.
-- AgentWall does not provide a web or graphical interface. Everything is terminal-based.
-- AgentWall does not replace OpenClaw's sandbox or Docker isolation. It complements them.
-- AgentWall does not guarantee that all agent actions are intercepted if OpenClaw's exec approval mode is not enabled.
-- AgentWall does not support runtimes other than OpenClaw in v0.1.
+- AgentWall does not intercept file read or write operations in v0.1. Only shell exec calls are covered.
+- AgentWall does not replace runtime-native OS-level sandboxing.
+- AgentWall does not support Cursor in v0.1. Cursor's hook system is targeted for v0.2.
+- AgentWall does not provide a web or graphical interface.
+- AgentWall does not provide team-level shared policy management in v0.1.
+- AgentWall does not support hot reload of the policy file.
 
 ---
 
-## 2. Architecture
+## 2. Competitive Landscape
 
-### 2.1 Layered Design
+| Capability | Claude Code | Cursor | OpenClaw | AgentWall |
+|---|---|---|---|---|
+| Per-action approval prompt | Yes (built-in) | Yes (built-in) | Yes (built-in) | Yes — unified across runtimes |
+| Allow/deny rules | Yes (settings.json) | Partial (not a security control) | Yes (tool policy) | Yes — single YAML for all runtimes |
+| OS-level sandbox | Yes (bubblewrap/Seatbelt) | No | Yes (Docker) | No — out of scope, use native |
+| PreToolUse / hook support | Yes | Yes | No | Implements the hook |
+| Structured audit log | No | No | Partial (transcripts) | Yes — primary feature |
+| Cross-runtime unified policy | No | No | No | Yes — primary feature |
+| Replayable session log | No | No | No | Yes — primary feature |
+| Known reliability issues | Deny rules buggy (Feb 2026) | Allowlist not a security control | None documented | None yet |
 
-AgentWall is designed in three layers so that runtime-specific adapters can be added without changing the core logic. This is the foundation for the v0.2 MCP proxy adapter and the v0.3 shell shim.
+---
+
+## 3. Architecture
+
+### 3.1 Layered Design
+
+AgentWall is designed in three layers so that runtime-specific adapters can be added without changing the core logic.
 
 | Layer | Responsibility |
 |---|---|
 | **Core** | Policy engine, approval UI, event logger. Runtime-agnostic. Contains all business logic. |
-| **Adapter** | Connects a specific agent runtime to the core. v0.1 ships one adapter: OpenClaw. |
-| **Runtime** | The agent itself (OpenClaw, Claude Code, Aider, etc.). AgentWall does not modify the runtime. |
+| **Adapter** | Connects a specific agent runtime to the core. Each runtime gets its own adapter. |
+| **Runtime** | The agent itself. AgentWall does not modify the runtime. |
 
-### 2.2 How it Works with OpenClaw (v0.1)
+The core has zero knowledge of any runtime. It receives a normalised `ActionProposal` object and returns a `Decision`. Every adapter translates between its runtime's native format and this common type.
 
-OpenClaw's gateway exposes a WebSocket API on localhost port 18789. When the agent proposes a shell command and exec approval mode is enabled in OpenClaw's config, the gateway broadcasts an `exec.approval.requested` event. Any connected client with the `operator.approvals` scope can respond by calling `exec.approval.resolve` to allow or deny the command.
+### 3.2 Adapter Strategy Per Runtime
 
-AgentWall connects to this WebSocket as a standard operator client. It requires no changes to OpenClaw's source code and uses a documented, public protocol.
+Different runtimes have fundamentally different integration points. AgentWall uses the right mechanism for each.
 
-> **Important prerequisite:** The developer must enable exec approval mode in OpenClaw before starting AgentWall. This requires adding one setting to `~/.openclaw/openclaw.json` and restarting the gateway. AgentWall detects if this is not set and prints a clear warning.
+| Runtime | Mechanism | How it works | Version |
+|---|---|---|---|
+| **OpenClaw** | WebSocket exec approval protocol | AgentWall connects as an operator client, listens for `exec.approval.requested`, resolves via `exec.approval.resolve` | v0.1 |
+| **Claude Code** | PreToolUse hook script | AgentWall registers a hook that Claude Code calls before every tool use. Hook exits 0 (allow) or non-zero (deny) | v0.1 |
+| **Cursor** | `beforeMCPExecution` hook | AgentWall registers in `~/.cursor/hooks.json`. Same hook pattern as Claude Code | v0.2 |
+| **Any MCP agent** | MCP proxy server | AgentWall runs as an MCP server, proxies all tool calls through the policy engine before forwarding to real MCP servers | v0.2 |
+| **Aider / non-MCP** | Shell shim (Rust) | AgentWall replaces bash/sh with a shim binary that intercepts all subprocess calls | v0.3 |
 
-### 2.3 Scope of Interception in v0.1
+### 3.3 Versioned Roadmap
 
-| Action type | Intercepted in v0.1 | Planned version |
+| Version | Adapters shipped | What is covered |
 |---|---|---|
-| Shell exec (bash, run, process tools) | Yes | v0.1 |
-| File read / write | No | v0.2 (MCP adapter) |
-| Network / browser | No | v0.2 (MCP adapter) |
-| Non-MCP custom tools | No | v0.3 (shell shim) |
-
-### 2.4 Roadmap
-
-| Version | Adapter | What it adds |
-|---|---|---|
-| **v0.1** | OpenClaw (WebSocket) | Exec interception, policy engine, approval prompt, session log, replay command. |
-| **v0.2** | MCP proxy | Intercepts any tool call from any MCP-compatible agent (Claude Code, Cursor, etc.). Covers file, network, and custom tools. |
-| **v0.3** | Shell shim | Compiled binary that replaces bash/sh. Intercepts subprocess calls for agents that do not use MCP. Written in Rust for this component only. |
-
-The MCP adapter in v0.2 is the primary generic story. MCP is becoming the standard tool interface across agent runtimes. An AgentWall MCP proxy server sits between the agent's MCP client and any MCP tool server, intercepting every tool call regardless of which agent runtime is in use.
+| **v0.1** | OpenClaw (WebSocket) · Claude Code (PreToolUse hook) | Shell exec from OpenClaw and Claude Code |
+| **v0.2** | + Cursor (hook) · + MCP proxy | All MCP tool calls from any MCP-compatible agent |
+| **v0.3** | + Shell shim (Rust) | Direct subprocess calls from any agent that does not use MCP |
 
 ---
 
-## 3. Functional Requirements
+## 4. Functional Requirements
 
-### 3.1 Installation and Setup
+### 4.1 Installation and Setup
 
 **FR-01** The developer installs AgentWall globally with a single command: `npm install -g agentwall`. No other dependencies need to be installed manually.
 
-**FR-02** Running `agentwall init` creates a default policy file at `~/.agentwall/policy.yaml` and a log directory at `~/.agentwall/`. If the directory or file already exists, the command does not overwrite them.
+**FR-02** Running `agentwall init` creates a default policy file at `~/.agentwall/policy.yaml` and a log directory at `~/.agentwall/`. If they already exist, the command does not overwrite them.
 
-**FR-03** Running `agentwall setup` prints step-by-step instructions for enabling exec approval mode in OpenClaw, including the exact JSON to add to the OpenClaw config file.
+**FR-03** Running `agentwall setup openclaw` prints step-by-step instructions for enabling exec approval mode in OpenClaw, including the exact JSON to add to `~/.openclaw/openclaw.json`.
 
-**FR-04** Running `agentwall start` connects to the OpenClaw gateway and prints a clear status message confirming the connection. If the connection fails, it prints a helpful error message that diagnoses the most likely cause (gateway not running, token mismatch, exec approval mode not enabled).
+**FR-04** Running `agentwall setup claude-code` prints step-by-step instructions for registering AgentWall as a PreToolUse hook in Claude Code, including the exact JSON to add to `.claude/settings.json`.
 
-**FR-05** AgentWall automatically reconnects if the gateway connection drops, with a short delay between attempts. It prints a message each time it reconnects.
+**FR-05** Running `agentwall start` starts all adapters that have been configured and prints a status line for each one showing whether it connected successfully.
 
-### 3.2 Action Interception
+**FR-06** Each adapter reconnects automatically if its runtime connection drops, with a short delay between attempts. The developer is notified when a connection drops and when it is restored.
 
-**FR-06** AgentWall intercepts every exec approval request that OpenClaw's gateway broadcasts. No exec action proposed by the agent executes without first passing through AgentWall's policy evaluation.
+### 4.2 Action Interception
 
-**FR-07** Each intercepted action is evaluated against the loaded policy before any response is sent to the gateway. The evaluation completes before the approval or denial is returned.
+**FR-07** AgentWall intercepts every exec approval request from OpenClaw before it executes. No exec action proposed by OpenClaw proceeds without passing through AgentWall's policy evaluation.
 
-**FR-08** If the policy produces a deny decision, AgentWall immediately resolves the approval as denied. The action does not execute. No user prompt is shown.
+**FR-08** AgentWall intercepts every tool call that Claude Code proposes via the PreToolUse hook. Claude Code waits for the hook to exit before executing the tool. The hook exits 0 to allow and non-zero to deny.
 
-**FR-09** If the policy produces an allow decision, AgentWall immediately resolves the approval as allowed. The action executes. No user prompt is shown.
+**FR-09** Each intercepted action is evaluated against the policy before any response is returned to the runtime.
 
-**FR-10** If the policy produces an ask decision, AgentWall pauses and shows an approval prompt in the terminal. The action does not execute until the developer responds.
+**FR-10** If the policy produces deny, AgentWall responds with deny immediately. The action does not execute. No prompt is shown.
 
-**FR-11** The approval response is sent to the gateway within a reasonable timeout even if the developer does not respond. The default timeout behaviour is to deny the action. This prevents the agent from hanging indefinitely.
+**FR-11** If the policy produces allow, AgentWall responds with allow immediately. No prompt is shown.
 
-### 3.3 Policy Engine
+**FR-12** If the policy produces ask, AgentWall shows an approval prompt. The action does not execute until the developer responds.
 
-**FR-12** The policy is defined in a YAML file at `~/.agentwall/policy.yaml`. The file uses plain English-style keys and does not require any programming knowledge to edit.
+**FR-13** If the developer does not respond within the timeout period (default 5 minutes), the action is automatically denied. The runtime is notified and the timeout is logged.
 
-**FR-13** The policy file supports three rule types: `deny` (always blocked), `allow` (always permitted without prompting), and `ask` (developer is prompted). Rules are evaluated in the order: deny first, then allow, then ask.
+### 4.3 Policy Engine
 
-**FR-14** Each rule can match on a command pattern (the shell command string) or a path pattern (the working directory or file path of the action). Both can be specified in the same rule.
+**FR-14** The policy is defined in a single YAML file at `~/.agentwall/policy.yaml`. The same policy applies to all connected runtimes simultaneously.
 
-**FR-15** Command patterns support wildcard matching. For example, `rm -rf*` matches any command starting with `rm -rf`.
+**FR-15** The policy supports three rule types: `deny`, `allow`, and `ask`. Evaluation order: deny first, then allow, then ask. Unmatched actions default to ask.
 
-**FR-16** Path patterns support home directory expansion (`~` resolves to the user's home directory) and glob wildcards. For example, `~/.ssh/**` matches any path inside the `.ssh` directory.
+**FR-16** Each rule can match on a command pattern, a path pattern, or a tool name. Any combination can appear in a single rule. If multiple fields are specified in one rule, all must match (AND logic).
 
-**FR-17** A special path value `outside:workspace` matches any action whose working directory is outside the directory where AgentWall was started.
+**FR-17** Command and path patterns support `~` home directory expansion and `*` / `**` glob wildcards.
 
-**FR-18** If an action does not match any rule, the default behaviour is `ask`. Unknown actions are never silently allowed.
+**FR-18** The special path value `outside:workspace` matches any action whose working directory is outside the directory where AgentWall was started.
 
-**FR-19** The default policy file created by `agentwall init` must include sensible defaults that protect the most sensitive locations on a developer machine without any editing. At minimum, defaults must deny access to `~/.ssh`, `~/.aws`, and `~/.openclaw/credentials`.
+**FR-19** The default policy created by `agentwall init` must deny access to `~/.ssh`, `~/.aws`, and `~/.openclaw/credentials` without any editing required.
 
-**FR-20** The policy file is loaded once when AgentWall starts. Changes to the file take effect on the next AgentWall start. There is no hot reload in v0.1.
+**FR-20** The policy is validated at startup. If it contains a syntax error or unknown keys, AgentWall prints a clear message identifying the problem and exits with code 1.
 
-### 3.4 Approval Prompt
+**FR-21** The policy is loaded once at startup. Changes take effect on the next AgentWall start.
 
-**FR-21** When an action requires approval, AgentWall displays a prompt in the terminal showing the full command string, the working directory if available, and the reason the action was flagged.
+### 4.4 Approval Prompt
 
-**FR-22** The prompt offers three choices: `y` to allow this action once, `n` to deny this action, and `a` to always allow this command type for the rest of the session without prompting again.
+**FR-22** The approval prompt shows: the full command or tool name, the runtime that proposed it, the working directory if available, and the reason it was flagged.
 
-**FR-23** The `always` option applies to the command's base executable for the remainder of the session. For example, selecting `always` for `git status` means subsequent `git` commands in the same session are automatically allowed. This setting is not persisted to the policy file — it only lasts until AgentWall is stopped.
+**FR-23** The prompt offers three choices: `y` (allow once), `n` (deny), `a` (always allow this command type for the session).
 
-**FR-24** The prompt uses colour to make the decision visually clear: allow decisions are shown in green, deny decisions in red, and ask prompts in yellow.
+**FR-24** The `always` option is session-only and is not written to the policy file.
 
-**FR-25** The prompt must not interfere with other terminal output. It renders cleanly whether the developer is watching the terminal or returns to it later.
+**FR-25** The prompt uses colour: green for allow, red for deny, yellow for ask. All output must also be readable without colour.
 
-### 3.5 Event Logging
+### 4.5 Event Logging
 
-**FR-26** AgentWall writes a log entry for every intercepted action to `~/.agentwall/session-YYYY-MM-DD.jsonl`. A new file is created each day.
+**FR-26** AgentWall writes one log entry per intercepted action to `~/.agentwall/session-YYYY-MM-DD.jsonl`.
 
-**FR-27** Each log entry is a single JSON object on one line containing: timestamp, full command string, working directory (if available), policy decision (allow / deny / ask), how it was resolved (policy or user), the approval ID from the gateway, and the session ID if available.
+**FR-27** Each entry contains: timestamp, runtime name, command or tool name, working directory, policy decision, how it was resolved (policy or user), and any runtime-specific IDs.
 
-**FR-28** Log files are append-only. AgentWall never overwrites or deletes existing log entries.
+**FR-28** Log files are append-only. AgentWall never deletes or overwrites log entries.
 
-**FR-29** The log directory and files are created automatically on first run. No manual setup is needed.
+**FR-29** The log directory and files are created automatically on first run.
 
-### 3.6 Replay Command
+### 4.6 Replay Command
 
-**FR-30** Running `agentwall replay` prints the most recent session log in a human-readable table in the terminal. The default view shows the last 50 entries.
+**FR-30** Running `agentwall replay` prints the last 50 entries from the most recent session log in a human-readable table.
 
-**FR-31** Running `agentwall replay N` (where N is a number) shows the last N entries.
+**FR-31** Running `agentwall replay N` shows the last N entries.
 
-**FR-32** Each row in the replay output shows: time of the action, decision (ALLOW / DENY / ASK), how it was resolved (policy or user), and the command string. Long commands are truncated with an ellipsis.
+**FR-32** Each row shows: time, runtime, decision (ALLOW / DENY / ASK), resolved by (policy or user), command or tool name (truncated if long).
 
-**FR-33** The replay output uses colour consistent with the approval prompt: green for allow, red for deny, yellow for ask.
-
----
-
-## 4. Non-Functional Requirements
-
-### 4.1 Performance
-
-**NFR-01** Policy evaluation must complete in under 10 milliseconds for any action. The policy engine must never be the bottleneck.
-
-**NFR-02** Automatically allowed or denied actions (no user prompt required) must be resolved and sent back to the gateway in under 50 milliseconds end-to-end. This ensures AgentWall adds no perceptible delay to low-risk actions.
-
-### 4.2 Reliability
-
-**NFR-03** If AgentWall loses its connection to the OpenClaw gateway, it must attempt to reconnect automatically. During the reconnection window, the developer must be clearly informed that AgentWall is not intercepting actions.
-
-**NFR-04** If AgentWall crashes or is stopped, OpenClaw continues to operate normally. AgentWall is not a required dependency of OpenClaw — its absence does not break the agent.
-
-**NFR-05** Log writes must not fail silently. If a log entry cannot be written, AgentWall prints a warning to the terminal but continues operating.
-
-### 4.3 Usability
-
-**NFR-06** All terminal output must be readable without colour. Colour is additive, not structural.
-
-**NFR-07** All error messages must suggest a concrete next step. AgentWall never prints a bare error code without an explanation.
-
-**NFR-08** The policy YAML syntax must be validated at startup. If the file contains a syntax error, AgentWall prints a clear message identifying the problem and exits rather than running with a broken policy.
-
-### 4.4 Distribution
-
-**NFR-09** AgentWall is published as an npm package under the name `agentwall`. It must install cleanly with `npm install -g agentwall` on Node 22 or later on macOS and Linux.
-
-**NFR-10** The installed package exposes a single CLI binary named `agentwall`. No other global binaries are installed.
-
-**NFR-11** The package must have no native compiled dependencies. All dependencies must be pure JavaScript or TypeScript so that installation does not require a C/C++ build toolchain.
+**FR-33** The replay output uses the same colour scheme as the approval prompt.
 
 ---
 
-## 5. CLI Reference
+## 5. Non-Functional Requirements
+
+### 5.1 Performance
+
+**NFR-01** Policy evaluation must complete in under 10 milliseconds for any action from any runtime.
+
+**NFR-02** Auto-allow and auto-deny decisions must be returned to the runtime in under 50 milliseconds end-to-end.
+
+**NFR-03** The Claude Code PreToolUse hook — including Node.js process startup and policy evaluation — must complete in under 20 milliseconds for auto-allow actions. If this target cannot be met with a full Node process per hook call, a lightweight daemon + IPC architecture must be used instead.
+
+### 5.2 Reliability
+
+**NFR-04** If AgentWall loses its connection to OpenClaw, it reconnects automatically and notifies the developer.
+
+**NFR-05** If the Claude Code hook process fails or exits with an error, Claude Code falls back to its native permission behaviour. AgentWall's hook must never crash in a way that blocks Claude Code from operating.
+
+**NFR-06** If AgentWall is stopped, all runtimes continue with their own native permission systems. AgentWall is not a required dependency of any runtime.
+
+**NFR-07** Log write failures must not crash AgentWall. A warning is printed and operation continues.
+
+### 5.3 Usability
+
+**NFR-08** All terminal output must be readable without colour support.
+
+**NFR-09** All error messages must suggest a concrete next step.
+
+**NFR-10** The `agentwall setup <runtime>` output must be fully self-contained — the developer should not need to visit external documentation to complete the setup.
+
+### 5.4 Distribution
+
+**NFR-11** Published as the npm package `agentwall`. Installs cleanly on Node 22+ on macOS and Linux.
+
+**NFR-12** Exposes a single CLI binary named `agentwall`.
+
+**NFR-13** No native compiled dependencies. All runtime dependencies are pure JavaScript or TypeScript.
+
+---
+
+## 6. CLI Reference
 
 ### Commands
 
 | Command | Description |
 |---|---|
-| `agentwall start` | Connect to the OpenClaw gateway and begin intercepting exec approvals. Runs in the foreground. Ctrl-C stops it cleanly. |
-| `agentwall init` | Write the default policy.yaml to `~/.agentwall/` and create the log directory. Safe to run multiple times. |
-| `agentwall setup` | Print instructions for enabling exec approval mode in OpenClaw. |
-| `agentwall replay [N]` | Print the last N entries from the most recent session log. Default N is 50. |
+| `agentwall start` | Start all configured adapters. Runs in the foreground. Ctrl-C stops cleanly. |
+| `agentwall init` | Write the default policy.yaml and create the log directory. |
+| `agentwall setup openclaw` | Print OpenClaw setup instructions. |
+| `agentwall setup claude-code` | Print Claude Code PreToolUse hook setup instructions. |
+| `agentwall setup cursor` | Print Cursor hook setup instructions (v0.2). |
+| `agentwall replay [N]` | Print the last N entries from the most recent session log. Default 50. |
+| `agentwall status` | Show which adapters are currently connected and active. |
 | `agentwall --help` | Print usage information. |
 
 ### Flags for `agentwall start`
 
 | Flag | Description |
 |---|---|
-| `--token <token>` | Gateway auth token. Can also be set via the `OPENCLAW_GATEWAY_TOKEN` environment variable. |
-| `--gateway <url>` | WebSocket URL for the OpenClaw gateway. Defaults to `ws://127.0.0.1:18789`. |
-| `--verbose` | Print debug-level information including raw WebSocket messages. |
+| `--token <token>` | OpenClaw gateway auth token. Can also be set via `OPENCLAW_GATEWAY_TOKEN`. |
+| `--gateway <url>` | OpenClaw gateway WebSocket URL. Defaults to `ws://127.0.0.1:18789`. |
+| `--only <runtime>` | Start only the named adapter. Useful for debugging. |
+| `--verbose` | Print debug-level output. |
 
 ---
 
-## 6. Default Policy
-
-The following rules are written to `policy.yaml` when the developer runs `agentwall init`. They are designed to be safe and useful out of the box without any editing.
+## 7. Default Policy
 
 ```yaml
-# AgentWall policy — allow / ask / deny rules
-# Rules are evaluated: deny → allow → ask
-# Unmatched exec actions default to: ask
+# AgentWall policy
+# Applies to all connected runtimes (OpenClaw, Claude Code, Cursor, MCP agents)
+# Evaluation order: deny → allow → ask
+# Unmatched actions default to: ask
 
 deny:
   - path: ~/.ssh/**
@@ -277,22 +319,22 @@ allow:
 
 ---
 
-## 7. Out of Scope for v0.1
+## 8. Out of Scope for v0.1
 
-The following are explicitly deferred to future versions:
-
-- File read and write interception. Requires the MCP proxy adapter (v0.2) or changes to OpenClaw's tool approval protocol.
-- Network and browser action interception.
-- A web UI or graphical dashboard.
-- Hot reload of the policy file without restarting AgentWall.
-- Policy rules that persist the `always` choice across sessions.
-- Support for agent runtimes other than OpenClaw.
+- File read and write interception (requires MCP proxy — v0.2).
+- Network and browser action interception (v0.2).
+- Cursor adapter (v0.2).
+- MCP proxy adapter (v0.2).
+- Shell shim for non-MCP agents such as Aider (v0.3, written in Rust).
+- Web or graphical UI.
+- Hot reload of the policy file.
+- Persisting the session `always` choice across restarts.
+- Team-level shared policy management.
 - Multi-machine or remote agent support.
-- Enterprise policy management, shared policies, or team policy packs.
 
 ---
 
-## 8. Success Metrics
+## 9. Success Metrics
 
 | Metric | Target |
 |---|---|
@@ -300,31 +342,35 @@ The following are explicitly deferred to future versions:
 | npm downloads in first 30 days | 1,000+ |
 | Time from install to first interception | Under 5 minutes |
 | Policy evaluation latency | Under 10ms |
+| Claude Code hook latency (auto-allow) | Under 20ms |
 | End-to-end latency for auto decisions | Under 50ms |
+| Runtimes supported at launch | 2 (OpenClaw + Claude Code) |
 
 ---
 
-## 9. Open Questions
+## 10. Open Questions
 
-1. **Multiple instances:** What happens if multiple AgentWall instances are connected to the same OpenClaw gateway simultaneously? Only one should respond to each approval request. The behaviour needs to be defined.
+1. **Claude Code hook startup latency.** The PreToolUse hook is a process Claude Code spawns per tool call. If Node.js module loading makes this too slow, AgentWall may need a daemon-plus-IPC architecture where a long-running daemon handles policy evaluation and the hook script is a lightweight IPC client. This needs to be measured before committing to the architecture.
 
-2. **Foreground vs daemon:** Should `agentwall start` daemonise and run in the background, or always run in the foreground? Foreground is simpler and more transparent for v0.1 but may be less convenient in practice.
+2. **Claude Code hook JSON protocol.** The exact stdin/stdout format Claude Code uses for PreToolUse hooks needs to be confirmed against Claude Code's documentation before implementation. The hook must parse this correctly or it will silently mis-parse tool call details and make wrong decisions.
 
-3. **Policy comments:** YAML supports comments natively so the policy file should support them, but this should be confirmed with a test during implementation.
+3. **Multiple AgentWall instances.** If a developer runs `agentwall start` in two terminals, both instances receive the same events. A lock file prevents this for the common case, but the correct UX for intentional multi-runtime setups needs to be defined.
 
-4. **Detection of missing exec approval mode:** What is the correct behaviour when OpenClaw is running but exec approval mode is not enabled? AgentWall should detect this and warn clearly, but the detection mechanism needs to be confirmed against the OpenClaw protocol.
+4. **Unconfigured runtime detection.** If a runtime is running but AgentWall has not been configured as its hook, AgentWall cannot detect this. The `agentwall status` command should surface unconfigured runtimes clearly, but the detection mechanism needs to be designed.
 
-5. **Log rotation:** Should the session log be pruned or rotated automatically? For v0.1 it may be simplest to let logs accumulate and document manual cleanup, but this should be decided before shipping.
+5. **Log rotation.** For v0.1 logs accumulate indefinitely. A simple rotation or pruning policy should be added before shipping — the question is whether it is automatic or documented as a manual step.
 
 ---
 
-## 10. Glossary
+## 11. Glossary
 
 | Term | Definition |
 |---|---|
-| **Agent runtime** | The software that runs the AI agent and calls tools on its behalf. In v0.1 this is OpenClaw. |
-| **Exec approval protocol** | OpenClaw's built-in mechanism for pausing a shell command and asking a connected client to allow or deny it before it executes. |
-| **MCP (Model Context Protocol)** | An open standard for connecting AI agents to tools. Used by Claude Code, Cursor, and others. The basis for the v0.2 generic adapter. |
-| **Policy engine** | The component that evaluates an intercepted action against the rules in `policy.yaml` and produces an allow, deny, or ask decision. |
-| **Shell shim** | A replacement binary for bash or sh that intercepts subprocess calls. Planned for v0.3 to cover agents that do not use MCP. Written in Rust. |
-| **Workspace** | The directory from which AgentWall is started. Used as the reference point for the `outside:workspace` path rule. |
+| **Adapter** | A runtime-specific module that connects a particular agent (OpenClaw, Claude Code, etc.) to AgentWall's core. |
+| **ActionProposal** | The normalised type that every adapter produces and passes to the core. Contains command or tool name, working directory, runtime name, and runtime-specific IDs. |
+| **Exec approval protocol** | OpenClaw's built-in WebSocket mechanism for pausing a shell command and asking a connected client to allow or deny it. |
+| **MCP (Model Context Protocol)** | An open standard for connecting AI agents to tools. The basis for the v0.2 generic proxy adapter. |
+| **Policy engine** | The component that evaluates an ActionProposal against policy.yaml and returns allow, deny, or ask. |
+| **PreToolUse hook** | A Claude Code feature that runs a script before every tool call. The script's exit code determines whether the tool call proceeds. |
+| **Shell shim** | A replacement binary for bash or sh that intercepts subprocess calls. Planned for v0.3 in Rust. |
+| **Workspace** | The directory from which AgentWall is started. The reference point for the `outside:workspace` path rule. |

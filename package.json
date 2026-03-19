@@ -1,0 +1,28 @@
+{
+  "name": "agentwall",
+  "version": "0.1.0",
+  "description": "Runtime safety layer for local AI agents — unified policy, approval, and audit trail",
+  "type": "module",
+  "bin": {
+    "agentwall": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["ai", "agents", "safety", "openclaw", "llm", "security"],
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.12",
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.0"
+  }
+}
