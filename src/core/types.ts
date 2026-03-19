@@ -23,3 +23,14 @@ export interface LogEntry {
   sessionId:  string;
   agentId:    string;
 }
+
+// ---------------------------------------------------------------------------
+// MCP proxy types
+// ---------------------------------------------------------------------------
+
+export interface McpProxyOptions {
+  serverCommand: string;
+  serverArgs:    string[];
+  serverEnv?:    Record<string, string>;
+  serverCwd?:    string;
+}

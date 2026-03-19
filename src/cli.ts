@@ -13,9 +13,10 @@ import { PolicyEngine } from "./core/policy.js";
 import { EventLogger } from "./core/logger.js";
 import { askUser, printDecision } from "./core/prompt.js";
 import { OpenClawAdapter } from "./adapters/openclaw/client.js";
+import { startProxy } from "./adapters/mcp/proxy.js";
 import type { ActionProposal, Decision, LogEntry } from "./core/types.js";
 
-const VERSION = "0.1.0";
+const VERSION = "0.3.0";
 const AGENTWALL_DIR = join(homedir(), ".agentwall");
 const LOCK_FILE = join(AGENTWALL_DIR, "agentwall.lock");
 
@@ -192,13 +193,70 @@ function initCommand(): void {
   process.stderr.write(`  ${GREEN}✓${RESET} Created ${policyPath}\n`);
 }
 
-function setupCommand(runtime: string | undefined): void {
-  if (runtime !== "openclaw") {
+async function proxyCommand(args: string[]): Promise<void> {
+  const separatorIndex = args.indexOf("--");
+  if (separatorIndex === -1 || separatorIndex === args.length - 1) {
     process.stderr.write(
-      `${RED}error:${RESET} Unknown runtime "${runtime || ""}".\n` +
-      `  Available: openclaw\n`,
+      `${RED}error:${RESET} Missing server command.\n` +
+      `  Usage: agentwall proxy -- <command> [args...]\n\n` +
+      `  Example:\n` +
+      `    agentwall proxy -- npx -y @modelcontextprotocol/server-filesystem ~\n`,
     );
     process.exit(1);
+  }
+
+  const serverArgs = args.slice(separatorIndex + 1);
+  const serverCommand = serverArgs[0];
+  const serverCommandArgs = serverArgs.slice(1);
+
+  await startProxy({
+    serverCommand,
+    serverArgs: serverCommandArgs,
+  });
+}
+
+function setupCommand(runtime: string | undefined): void {
+  const validRuntimes = ["openclaw", "mcp"];
+  if (!runtime || !validRuntimes.includes(runtime)) {
+    process.stderr.write(
+      `${RED}error:${RESET} Unknown runtime "${runtime || ""}".\n` +
+      `  Available: ${validRuntimes.join(", ")}\n`,
+    );
+    process.exit(1);
+  }
+
+  if (runtime === "mcp") {
+    process.stdout.write(`
+  MCP proxy setup
+
+  Replace your MCP server command with agentwall proxy:
+
+  Before (in ~/.cursor/mcp.json or claude_desktop_config.json):
+
+    {
+      "mcpServers": {
+        "filesystem": {
+          "command": "npx",
+          "args": ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"]
+        }
+      }
+    }
+
+  After:
+
+    {
+      "mcpServers": {
+        "filesystem": {
+          "command": "agentwall",
+          "args": ["proxy", "--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "/home/user"]
+        }
+      }
+    }
+
+  AgentWall wraps the real server. The client never knows it is there.
+
+`);
+    return;
   }
 
   process.stdout.write(`
@@ -266,19 +324,25 @@ function helpCommand(): void {
   agentwall v${VERSION} — runtime safety layer for local AI agents
 
   Usage:
+    agentwall proxy -- <command> [args...]
     agentwall start [--token <token>] [--gateway <url>] [--verbose]
     agentwall init
-    agentwall setup openclaw
+    agentwall setup <runtime>
     agentwall replay [N]
     agentwall status
     agentwall --help
 
   Commands:
-    start            Start all configured adapters
+    proxy            MCP proxy — wrap any MCP server with policy enforcement
+    start            Start OpenClaw gateway adapter
     init             Create ~/.agentwall/policy.yaml with default rules
-    setup <runtime>  Print setup instructions for a runtime
+    setup <runtime>  Print setup instructions (openclaw, mcp)
     replay [N]       Show last N log entries (default 50)
     status           Show version and status
+
+  Proxy usage:
+    agentwall proxy -- npx -y @modelcontextprotocol/server-filesystem ~
+    agentwall proxy -- node /path/to/custom-server.js
 
   Flags:
     --token <token>  OpenClaw gateway token (or set OPENCLAW_GATEWAY_TOKEN)
@@ -297,6 +361,9 @@ const remaining = process.argv.slice(3);
 
 (async () => {
   switch (command) {
+    case "proxy":
+      await proxyCommand(remaining);
+      break;
     case "start":
       await startCommand(remaining);
       break;

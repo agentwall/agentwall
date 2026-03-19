@@ -1,6 +1,7 @@
-import { promptApproval } from './approver.js';
+import { askUser, printDecision } from '../dist/core/prompt.js';
 import { logDecision } from './logger.js';
 import { getPolicy } from './policy.js';
+import { randomUUID } from 'node:crypto';
 
 /**
  * Creates the before_tool_call hook handler.
@@ -20,6 +21,7 @@ export function createBeforeToolCallHandler(logger) {
 
     if (policy === 'block') {
       logger.warn(`[AgentWall] Blocked by policy: ${toolName}`);
+      printDecision('deny', toolName, 'policy rule matched');
       logDecision({ toolName, params, decision: 'blocked', reason: 'policy', ctx });
       return {
         block: true,
@@ -29,15 +31,25 @@ export function createBeforeToolCallHandler(logger) {
 
     if (policy === 'allow') {
       logger.info(`[AgentWall] Auto-allowed: ${toolName}`);
+      printDecision('allow', toolName, 'auto-allow');
       logDecision({ toolName, params, decision: 'allowed', reason: 'auto-allow', ctx });
       return;
     }
 
-    let approved = false;
+    const proposal = {
+      approvalId: randomUUID(),
+      runtime: 'openclaw',
+      command: toolName,
+      workingDir: params?.path || params?.file || '',
+      toolInput: params,
+    };
+
+    let userDecision = 'deny';
     try {
-      approved = await promptApproval(toolName, params);
+      userDecision = await askUser(proposal, 'flagged as sensitive');
     } catch (err) {
       logger.error(`[AgentWall] Approval prompt failed: ${err.message}. Blocking for safety.`);
+      printDecision('deny', toolName, 'prompt error — blocked for safety');
       logDecision({ toolName, params, decision: 'blocked', reason: 'prompt-error', ctx });
       return {
         block: true,
@@ -45,6 +57,8 @@ export function createBeforeToolCallHandler(logger) {
       };
     }
 
+    const approved = userDecision === 'allow';
+    printDecision(userDecision, toolName, approved ? 'user approved' : 'user denied');
     logDecision({
       toolName,
       params,

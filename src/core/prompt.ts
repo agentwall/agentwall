@@ -1,4 +1,6 @@
 import { createInterface } from "node:readline";
+import { openSync, createReadStream } from "node:fs";
+import type { Readable } from "node:stream";
 import type { ActionProposal } from "./types.js";
 
 const AUTO_DENY_TIMEOUT_MS = 5 * 60 * 1000;
@@ -11,6 +13,42 @@ const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
 
 const sessionMemory = new Set<string>();
+
+let inputMode: "stdin" | "tty" = "stdin";
+let ttyAvailable: boolean | null = null;
+
+/**
+ * Switch prompt input to /dev/tty. Required in proxy mode where
+ * process.stdin carries MCP JSON-RPC traffic.
+ */
+export function useTtyInput(): void {
+  inputMode = "tty";
+}
+
+function isTtyAvailable(): boolean {
+  if (ttyAvailable !== null) return ttyAvailable;
+  try {
+    const fd = openSync("/dev/tty", "r");
+    const { closeSync } = require("node:fs");
+    closeSync(fd);
+    ttyAvailable = true;
+  } catch {
+    ttyAvailable = false;
+  }
+  return ttyAvailable;
+}
+
+function openInput(): Readable {
+  if (inputMode === "tty") {
+    if (!isTtyAvailable()) {
+      throw new Error("No TTY available for approval prompt");
+    }
+    const stream = createReadStream("/dev/tty");
+    stream.on("error", () => stream.destroy());
+    return stream;
+  }
+  return process.stdin;
+}
 
 interface QueueItem {
   proposal: ActionProposal;
@@ -31,7 +69,18 @@ function showPrompt(
   pendingCount: number,
 ): Promise<"allow" | "deny"> {
   return new Promise((resolve) => {
-    const rl = createInterface({ input: process.stdin, output: process.stderr });
+    let input: Readable;
+    try {
+      input = openInput();
+    } catch {
+      process.stderr.write(
+        `  ${RED}✗ DENY${RESET}  ${proposal.command}  ${DIM}(no TTY — blocked for safety)${RESET}\n`,
+      );
+      resolve("deny");
+      return;
+    }
+
+    const rl = createInterface({ input, output: process.stderr });
 
     let resolved = false;
     const finish = (decision: "allow" | "deny") => {
@@ -39,6 +88,7 @@ function showPrompt(
       resolved = true;
       clearTimeout(timeout);
       rl.close();
+      if (input !== process.stdin) input.destroy();
       resolve(decision);
     };
 
