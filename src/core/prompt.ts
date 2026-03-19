@@ -1,5 +1,5 @@
 import { createInterface } from "node:readline";
-import { openSync, createReadStream } from "node:fs";
+import { createReadStream } from "node:fs";
 import type { Readable } from "node:stream";
 import type { ActionProposal } from "./types.js";
 import type { ApprovalQueue } from "../web/approval.js";
@@ -34,14 +34,7 @@ export function useTtyInput(): void {
 
 function isTtyAvailable(): boolean {
   if (ttyAvailable !== null) return ttyAvailable;
-  try {
-    const fd = openSync("/dev/tty", "r");
-    const { closeSync } = require("node:fs");
-    closeSync(fd);
-    ttyAvailable = true;
-  } catch {
-    ttyAvailable = false;
-  }
+  ttyAvailable = process.stderr.isTTY === true;
   return ttyAvailable;
 }
 

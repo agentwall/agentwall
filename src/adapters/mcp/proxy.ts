@@ -18,7 +18,6 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { ServerCapabilities } from "@modelcontextprotocol/sdk/types.js";
 
-import { openSync, closeSync } from "node:fs";
 import { PolicyEngine } from "../../core/policy.js";
 import { EventLogger } from "../../core/logger.js";
 import { askUser, printDecision, useTtyInput, setWebApprovalQueue } from "../../core/prompt.js";
@@ -78,13 +77,7 @@ function buildLogEntry(
 }
 
 function checkTtyAvailable(): boolean {
-  try {
-    const fd = openSync("/dev/tty", "r");
-    closeSync(fd);
-    return true;
-  } catch {
-    return false;
-  }
+  return process.stderr.isTTY === true;
 }
 
 export async function startProxy(options: McpProxyOptions): Promise<void> {
