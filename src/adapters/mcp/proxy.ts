@@ -252,7 +252,7 @@ export async function startProxy(options: McpProxyOptions): Promise<void> {
 
     if (userDecision === "allow") {
       printDecision("allow", `${toolName}(${command})`, "user approved");
-      logger.log(buildLogEntry(proposal, "ask", "user"));
+      logger.log(buildLogEntry(proposal, "allow", "user"));
       return await client.callTool(request.params);
     }
 
