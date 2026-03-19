@@ -71,7 +71,10 @@ export class OpenClawAdapter {
 
   async resolve(approvalId: string, approved: boolean): Promise<void> {
     try {
-      await this.sendRequest("exec.approval.resolve", { approvalId, approved });
+      await this.sendRequest("exec.approval.resolve", {
+        id: approvalId,
+        decision: approved ? "allow-once" : "deny",
+      });
     } catch (err) {
       process.stderr.write(
         `  ${YELLOW}warning:${RESET} failed to resolve approval ${approvalId}: ${(err as Error).message}\n`,
@@ -319,11 +322,13 @@ export class OpenClawAdapter {
     const plan = payload.systemRunPlan as Record<string, unknown> | undefined;
     const argv = plan?.argv as string[] | undefined;
 
+    const req = (payload as any).request as Record<string, unknown> | undefined;
+
     const proposal: ActionProposal = {
-      approvalId: payload.approvalId as string,
+      approvalId: ((payload as any).id ?? payload.approvalId) as string,
       runtime: "openclaw",
-      command: (plan?.rawCommand as string) || argv?.join(" ") || "",
-      workingDir: (plan?.cwd as string) || "",
+      command: (req?.command as string) || (plan?.rawCommand as string) || argv?.join(" ") || "",
+      workingDir: (req?.cwd as string) || (plan?.cwd as string) || "",
       toolInput: payload,
       sessionId: payload.sessionId as string | undefined,
       agentId: payload.agentId as string | undefined,
