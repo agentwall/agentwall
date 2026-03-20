@@ -77,6 +77,7 @@ export class AgentWallWebServer {
     this.server = http.createServer((req, res) => this.handleRequest(req, res));
     this.server.on("error", (err) => { this.startError = err; });
     this.wss = new WebSocketServer({ server: this.server });
+    this.wss.on("error", (err) => { this.startError = err; });
     this.wss.on("connection", (ws) => this.handleWebSocket(ws));
 
     options.approvalQueue.onNewApproval((approval) => {

@@ -1,13 +1,11 @@
 import { createBeforeToolCallHandler } from './src/hook.js';
-import { ApprovalQueue } from './dist/web/approval.js';
 import { setWebApprovalQueue } from './dist/core/prompt.js';
-import { AgentWallWebServer } from './dist/web/server.js';
 import { EventLogger } from './dist/core/logger.js';
 import { PolicyEngine } from './dist/core/policy.js';
 import * as net from 'node:net';
 import * as http from 'node:http';
 
-const WEB_PORT = 7823;
+const REMOTE_PORT = parseInt(process.env.AGENTWALL_PORT ?? '', 10) || 7823;
 
 function isPortReachable(port) {
   return new Promise((resolve) => {
@@ -25,7 +23,7 @@ function remoteApprovalRequest(toolName, params, runtime) {
     const data = JSON.stringify({ toolName, params, runtime });
     const req = http.request({
       hostname: '127.0.0.1',
-      port: WEB_PORT,
+      port: REMOTE_PORT,
       path: '/api/request-approval',
       method: 'POST',
       headers: {
@@ -56,49 +54,31 @@ export default {
   id: 'agentwall',
   name: 'AgentWall',
   description: 'Intercepts all tool calls and prompts for user approval',
-  version: '0.2.0',
+  version: '0.8.0',
 
   activate(api) {
-    api.logger.info('[AgentWall] v0.2 activated — intercepting all tool calls');
+    api.logger.info('[AgentWall] v0.8 activated — intercepting all tool calls');
 
     const policy = new PolicyEngine();
-    let webServer = null;
 
-    const eventLogger = new EventLogger({
-      onEntry: (entry) => webServer?.notifyLogEntry(entry),
-    });
+    const eventLogger = new EventLogger({});
 
     const handler = createBeforeToolCallHandler(api.logger, { eventLogger });
     api.on('before_tool_call', handler);
 
-    isPortReachable(WEB_PORT).then((inUse) => {
-      if (inUse) {
-        process.stderr.write(`[AgentWall] Web UI already running at http://localhost:${WEB_PORT}\n`);
-        const remoteQueue = {
+    // Never start a web server inside OpenClaw — it conflicts with the gateway.
+    // If `agentwall ui` is already running, forward approval requests to it.
+    // Otherwise, fall back to terminal y/n/a prompts (the default in prompt.ts).
+    isPortReachable(REMOTE_PORT).then((running) => {
+      if (running) {
+        process.stderr.write(`[AgentWall] Forwarding approvals to web UI at http://localhost:${REMOTE_PORT}\n`);
+        setWebApprovalQueue({
           request: (toolName, params, runtime) =>
             remoteApprovalRequest(toolName, params, runtime),
-        };
-        setWebApprovalQueue(remoteQueue);
-        return;
-      }
-
-      const approvalQueue = new ApprovalQueue();
-      setWebApprovalQueue(approvalQueue);
-
-      webServer = new AgentWallWebServer({
-        port: WEB_PORT,
-        policyPath: policy.policyPath,
-        logDir: eventLogger.logDir,
-        approvalQueue,
-      });
-
-      webServer.start()
-        .then(() => {
-          process.stderr.write(`[AgentWall] Web UI available at http://localhost:${WEB_PORT}\n`);
-        })
-        .catch((err) => {
-          process.stderr.write(`[AgentWall] Web server failed: ${err.message}\n`);
         });
+      } else {
+        process.stderr.write(`[AgentWall] No web UI detected — using terminal prompts\n`);
+      }
     });
   }
 };
