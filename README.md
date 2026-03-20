@@ -22,7 +22,7 @@ Your AI agent has root access to your filesystem, your database, and your shell.
 
 AgentWall is a policy-enforcing MCP proxy. It sits between your AI client and every MCP server, intercepts every tool call, and enforces your rules before anything executes. Works with Claude Desktop, Cursor, Windsurf, Claude Code, and OpenClaw — one command to install.
 
-> *Product demo GIF — add here before wider promotion (optional but recommended).*
+![AgentWall demo](assets/demo.gif)
 
 ---
 
