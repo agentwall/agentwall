@@ -9,7 +9,7 @@
 
 **Run AI agents safely on your local machine**
 
-[![npm version](https://img.shields.io/npm/v/agentwall.svg)](https://www.npmjs.com/package/agentwall)
+[![npm version](https://img.shields.io/npm/v/@agentwall/agentwall.svg)](https://www.npmjs.com/package/@agentwall/agentwall)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
 [![GitHub commits](https://badgen.net/github/commits/agentwall/agentwall)](https://github.com/agentwall/agentwall/commits)
@@ -22,7 +22,7 @@ Your AI agent has root access to your filesystem, your database, and your shell.
 
 AgentWall is a policy-enforcing MCP proxy. It sits between your AI client and every MCP server, intercepts every tool call, and enforces your rules before anything executes. Works with Claude Desktop, Cursor, Windsurf, Claude Code, and OpenClaw — one command to install.
 
-<!-- demo GIF goes here -->
+> *Product demo GIF — add here before wider promotion (optional but recommended).*
 
 ---
 
@@ -44,7 +44,7 @@ Your YAML policy is the final word. Not the client. Not the model. You.
 ## Features
 
 - **Works everywhere** — Claude Desktop, Cursor, Windsurf, Claude Code, OpenClaw, any MCP client
-- **One command install** — `npx agentwall setup` auto-detects and wraps all your MCP servers
+- **One command install** — `npx @agentwall/agentwall setup` auto-detects and wraps all your MCP servers
 - **Browser approval UI** — approve or deny tool calls from your browser, works in GUI clients with no terminal
 - **YAML policy engine** — deny, allow, ask with glob matching, SQL content matching, path rules
 - **Independent audit log** — ground truth record of every tool call, regardless of what the model claims
@@ -57,7 +57,7 @@ Your YAML policy is the final word. Not the client. Not the model. You.
 ## Install
 
 ```bash
-npx agentwall setup
+npx @agentwall/agentwall setup
 ```
 
 AgentWall detects Claude Desktop, Cursor, Windsurf, Claude Code, and OpenClaw.
@@ -65,7 +65,7 @@ Wraps every MCP server automatically. Backs up your originals. Zero JSON editing
 
 ```bash
 # Or install globally
-npm install -g agentwall
+npm install -g @agentwall/agentwall
 agentwall setup
 ```
 
@@ -87,7 +87,7 @@ agentwall status
 
 ```bash
 # 1. Install and wrap your MCP servers
-npx agentwall setup
+npx @agentwall/agentwall setup
 
 # 2. Create a default policy (protects credentials, database, shell)
 agentwall init
@@ -141,6 +141,7 @@ The web UI is localhost-only. No auth. No external connections.
 AgentWall includes a native OpenClaw plugin that hooks into `before_tool_call` — intercepting `exec`, `read`, `write`, `edit`, `apply_patch`, and `process` before they execute.
 
 ```bash
+# From a clone of this repo (directory that contains openclaw.plugin.json)
 openclaw plugins install agentwall --link
 ```
 
