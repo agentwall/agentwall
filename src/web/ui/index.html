@@ -160,6 +160,12 @@
     font-size: 0.8125rem;
     margin-top: 1rem;
   }
+  #approvalList {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  #approvalList .approval-card { display: block; }
 </style>
 </head>
 <body>
@@ -171,6 +177,7 @@
   <a href="/log">Log</a>
   <a href="/clients">Clients</a>
   <span class="status-dot" id="statusDot" title="Connected"></span>
+  <button id="muteBtn" onclick="toggleMute()" title="Toggle notification sound" style="background:none;border:none;font-size:1.125rem;cursor:pointer;padding:0.25rem;opacity:0.7;transition:opacity 0.15s;">&#x1f514;</button>
 </nav>
 
 <div class="container">
@@ -185,43 +192,14 @@
     </div>
   </div>
 
-  <div id="approvalCard" class="approval-card">
-    <div class="card-header">Approval Request</div>
-
-    <div class="field">
-      <div class="field-label">Tool</div>
-      <div class="field-value" id="toolName"></div>
-    </div>
-    <div class="field">
-      <div class="field-label">Runtime</div>
-      <div class="field-value" id="runtime"></div>
-    </div>
-    <div class="field">
-      <div class="field-label">Time</div>
-      <div class="field-value" id="timestamp"></div>
-    </div>
-    <div class="field">
-      <div class="field-label">Arguments</div>
-      <div class="args-block" id="args"></div>
-    </div>
-
-    <div class="countdown" id="countdown"></div>
-
-    <div class="actions">
-      <button class="btn btn-deny" id="btnDeny" onclick="decide('deny')">Deny</button>
-      <button class="btn btn-approve" id="btnApprove" onclick="decide('allow')">Approve</button>
-    </div>
-
-    <div class="pending-count" id="pendingCount"></div>
-  </div>
+  <div id="approvalList"></div>
 </div>
 
 <script>
 (function () {
   const TIMEOUT_SECONDS = 30;
   let queue = [];
-  let currentId = null;
-  let countdownInterval = null;
+  let timers = {};
   let ws = null;
 
   function updateTabTitle() {
@@ -233,6 +211,20 @@
   }
 
   var audioCtx = null;
+  var soundMuted = localStorage.getItem("agentwall_mute") === "1";
+
+  function updateMuteBtn() {
+    document.getElementById("muteBtn").textContent = soundMuted ? "\u{1F515}" : "\u{1F514}";
+    document.getElementById("muteBtn").title = soundMuted ? "Sound off — click to unmute" : "Sound on — click to mute";
+  }
+
+  window.toggleMute = function () {
+    soundMuted = !soundMuted;
+    localStorage.setItem("agentwall_mute", soundMuted ? "1" : "0");
+    updateMuteBtn();
+  };
+
+  updateMuteBtn();
 
   function warmAudioContext() {
     try {
@@ -250,6 +242,7 @@
 
   function playNotificationSound() {
     try {
+      if (soundMuted) return;
       warmAudioContext();
       if (!audioCtx || audioCtx.state !== "running") return;
 
@@ -293,98 +286,107 @@
 
       if (msg.type === "approval_request") {
         queue.push(msg);
-        if (!currentId) showNext();
+        renderAll();
         updateTabTitle();
         playNotificationSound();
       }
 
       if (msg.type === "approval_resolved") {
-        queue = queue.filter(function (a) { return a.id !== msg.id; });
-        if (currentId === msg.id) {
-          currentId = null;
-          clearInterval(countdownInterval);
-          showNext();
-        }
-        updatePendingCount();
+        removeApproval(msg.id);
         updateTabTitle();
       }
     };
   }
 
-  function showNext() {
+  function removeApproval(id) {
+    queue = queue.filter(function (a) { return a.id !== id; });
+    if (timers[id]) { clearInterval(timers[id]); delete timers[id]; }
+    renderAll();
+  }
+
+  function renderAll() {
+    var list = document.getElementById("approvalList");
+    var empty = document.getElementById("emptyState");
+
     if (queue.length === 0) {
-      currentId = null;
-      document.getElementById("approvalCard").classList.remove("visible");
-      document.getElementById("emptyState").style.display = "";
-      clearInterval(countdownInterval);
+      list.innerHTML = "";
+      empty.style.display = "";
       return;
     }
 
-    var approval = queue[0];
-    currentId = approval.id;
+    empty.style.display = "none";
 
-    document.getElementById("emptyState").style.display = "none";
-    document.getElementById("approvalCard").classList.add("visible");
-    document.getElementById("toolName").textContent = approval.toolName;
-    document.getElementById("runtime").textContent = approval.runtime;
-    document.getElementById("timestamp").textContent = new Date(approval.timestamp).toLocaleTimeString();
-    document.getElementById("args").textContent = JSON.stringify(approval.params, null, 2);
+    // Clear old timers for cards that no longer exist
+    var activeIds = {};
+    for (var i = 0; i < queue.length; i++) activeIds[queue[i].id] = true;
+    for (var tid in timers) {
+      if (!activeIds[tid]) { clearInterval(timers[tid]); delete timers[tid]; }
+    }
 
-    document.getElementById("btnDeny").disabled = false;
-    document.getElementById("btnApprove").disabled = false;
+    var html = "";
+    for (var i = 0; i < queue.length; i++) {
+      var a = queue[i];
+      html += '<div class="approval-card" id="card-' + a.id + '">'
+        + '<div class="card-header">Approval Request</div>'
+        + '<div class="field"><div class="field-label">Tool</div>'
+        + '<div class="field-value">' + escapeHtml(a.toolName) + '</div></div>'
+        + '<div class="field"><div class="field-label">Runtime</div>'
+        + '<div class="field-value">' + escapeHtml(a.runtime) + '</div></div>'
+        + '<div class="field"><div class="field-label">Time</div>'
+        + '<div class="field-value">' + new Date(a.timestamp).toLocaleTimeString() + '</div></div>'
+        + '<div class="field"><div class="field-label">Arguments</div>'
+        + '<div class="args-block">' + escapeHtml(JSON.stringify(a.params, null, 2)) + '</div></div>'
+        + '<div class="countdown" id="cd-' + a.id + '"></div>'
+        + '<div class="actions">'
+        + '<button class="btn btn-deny" id="deny-' + a.id + '" onclick="decide(\'' + a.id + '\',\'deny\')">Deny</button>'
+        + '<button class="btn btn-approve" id="approve-' + a.id + '" onclick="decide(\'' + a.id + '\',\'allow\')">Approve</button>'
+        + '</div></div>';
+    }
+    list.innerHTML = html;
 
-    startCountdown(approval.timestamp);
-    updatePendingCount();
+    for (var i = 0; i < queue.length; i++) {
+      if (!timers[queue[i].id]) startCountdown(queue[i]);
+    }
   }
 
-  function startCountdown(timestampStr) {
-    clearInterval(countdownInterval);
-    var startTime = new Date(timestampStr).getTime();
+  function escapeHtml(s) {
+    var d = document.createElement("div");
+    d.textContent = s;
+    return d.innerHTML;
+  }
+
+  function startCountdown(approval) {
+    var startTime = new Date(approval.timestamp).getTime();
 
     function tick() {
+      var el = document.getElementById("cd-" + approval.id);
+      if (!el) { clearInterval(timers[approval.id]); delete timers[approval.id]; return; }
       var elapsed = (Date.now() - startTime) / 1000;
       var remaining = Math.max(0, Math.ceil(TIMEOUT_SECONDS - elapsed));
-      var el = document.getElementById("countdown");
       el.textContent = "Auto-denying in " + remaining + " second" + (remaining !== 1 ? "s" : "");
       el.className = remaining <= 10 ? "countdown urgent" : "countdown";
-
-      if (remaining <= 0) {
-        clearInterval(countdownInterval);
-      }
+      if (remaining <= 0) { clearInterval(timers[approval.id]); delete timers[approval.id]; }
     }
 
     tick();
-    countdownInterval = setInterval(tick, 1000);
+    timers[approval.id] = setInterval(tick, 1000);
   }
 
-  function updatePendingCount() {
-    var extra = queue.length - 1;
-    var el = document.getElementById("pendingCount");
-    if (extra > 0) {
-      el.textContent = extra + " more request" + (extra !== 1 ? "s" : "") + " pending";
-    } else {
-      el.textContent = "";
-    }
-  }
+  window.decide = function (id, decision) {
+    var btnD = document.getElementById("deny-" + id);
+    var btnA = document.getElementById("approve-" + id);
+    if (btnD) btnD.disabled = true;
+    if (btnA) btnA.disabled = true;
 
-  window.decide = function (decision) {
-    if (!currentId) return;
-
-    document.getElementById("btnDeny").disabled = true;
-    document.getElementById("btnApprove").disabled = true;
-
-    fetch("/api/approve/" + currentId, {
+    fetch("/api/approve/" + id, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ decision: decision }),
     }).then(function () {
-      queue = queue.filter(function (a) { return a.id !== currentId; });
-      currentId = null;
-      clearInterval(countdownInterval);
-      showNext();
+      removeApproval(id);
     }).catch(function () {
-      document.getElementById("btnDeny").disabled = false;
-      document.getElementById("btnApprove").disabled = false;
+      if (btnD) btnD.disabled = false;
+      if (btnA) btnA.disabled = false;
     });
   };
 

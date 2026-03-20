@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
+
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -84,22 +84,6 @@ export class ApprovalQueue {
   }
 }
 
-function escapeAppleScript(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-function fireSystemNotification(toolName: string, runtime: string): void {
-  if (process.platform !== "darwin") return;
-
-  const title = escapeAppleScript("AgentWall — Approval Required");
-  const message = escapeAppleScript(`${runtime}: ${toolName} wants to run`);
-  const subtitle = escapeAppleScript("Open localhost:7823 to approve or deny");
-
-  const script = `display notification "${message}" with title "${title}" subtitle "${subtitle}"`;
-
-  execFile("osascript", ["-e", script], (err) => {
-    if (err) {
-      process.stderr.write(`[AgentWall] Notification failed: ${err.message}\n`);
-    }
-  });
+function fireSystemNotification(_toolName: string, _runtime: string): void {
+  // Browser UI already plays a notification sound via Web Audio.
 }
