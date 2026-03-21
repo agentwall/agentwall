@@ -1,6 +1,6 @@
 {
   "name": "@agentwall/agentwall",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Run AI agents safely on your local machine — policy-enforcing MCP proxy",
   "type": "module",
   "main": "dist/cli.js",

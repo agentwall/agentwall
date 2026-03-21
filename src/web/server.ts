@@ -14,7 +14,7 @@ import {
   type ClientEntry,
 } from "../core/clients.js";
 
-const VERSION = "0.8.0";
+const VERSION = "0.8.1";
 const DEFAULT_PORT = 7823;
 
 const MIME_TYPES: Record<string, string> = {

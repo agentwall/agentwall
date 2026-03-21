@@ -34,7 +34,7 @@ import {
   type DetectedConfig,
 } from "./core/clients.js";
 
-const VERSION = "0.8.0";
+const VERSION = "0.8.1";
 const AGENTWALL_DIR = join(homedir(), ".agentwall");
 const LOCK_FILE = join(AGENTWALL_DIR, "agentwall.lock");
 
