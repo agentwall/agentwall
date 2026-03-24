@@ -7,11 +7,12 @@
 </tr>
 </table>
 
-**Run AI agents safely on your local machine**
+**Your AI agent has root access. This blocks it.**
 
 [![npm version](https://img.shields.io/npm/v/@agentwall/agentwall.svg)](https://www.npmjs.com/package/@agentwall/agentwall)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org)
+[![GitHub Stars](https://img.shields.io/github/stars/agentwall/agentwall?style=social)](https://github.com/agentwall/agentwall)
 [![GitHub commits](https://badgen.net/github/commits/agentwall/agentwall)](https://github.com/agentwall/agentwall/commits)
 
 </div>
@@ -20,7 +21,7 @@
 
 Your AI agent has root access to your filesystem, your database, and your shell. Do you know what it's doing?
 
-AgentWall is a policy-enforcing MCP proxy. It sits between your AI client and every MCP server, intercepts every tool call, and enforces your rules before anything executes. Works with Claude Desktop, Cursor, Windsurf, Claude Code, and OpenClaw — one command to install.
+AgentWall is a runtime policy enforcement layer for locally-run AI agents. It intercepts every tool call via an MCP proxy for Claude Desktop, Cursor, Windsurf, and Claude Code — and via a native plugin for OpenClaw — enforcing your rules before anything executes. One command to install.
 
 ![AgentWall demo](assets/demo.gif)
 
@@ -378,6 +379,20 @@ After:
 - Runaway agents — rate limiting per tool per session
 - Common obfuscation patterns — `eval`, `base64 -d`
 - Database writes without approval — `DELETE`, `ALTER`, `UPDATE`
+
+---
+
+## OWASP Agentic AI Top 10 coverage
+
+AgentWall addresses the following risks from the [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/):
+
+| Threat | How AgentWall helps |
+|---|---|
+| ASI02 – Tool Misuse & Exploitation | YAML policy engine blocks destructive tool calls before execution |
+| ASI03 – Identity & Privilege Abuse | Credential path protection and workspace boundary enforcement |
+| ASI08 – Cascading Failures | Rate limiting catches runaway agent loops before they cause damage |
+
+AgentWall is a policy engine, not a security sandbox. See [what AgentWall does not protect against](#what-agentwall-does-not-protect-against) for an honest assessment of its limits.
 
 ---
 
