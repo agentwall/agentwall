@@ -11,6 +11,8 @@ const RED = "\x1b[31m";
 const YELLOW = "\x1b[33m";
 const RESET = "\x1b[0m";
 
+const MAGENTA = "\x1b[35m";
+
 const DECISION_COLORS: Record<DecisionVerdict, string> = {
   allow: GREEN,
   deny: RED,
@@ -98,13 +100,23 @@ export class EventLogger {
         .map(v => String(v).padStart(2, "0"))
         .join(":");
       const runtime = entry.runtime.padEnd(13);
-      const decision = entry.decision.toUpperCase().padEnd(10);
-      const by = entry.resolvedBy.padEnd(9);
-      const color = DECISION_COLORS[entry.decision] || "";
+      const isTaintBlock = entry.resolvedBy === "taint-tracker";
 
-      process.stdout.write(
-        `  ${time}   ${runtime}${color}${decision}${RESET}${by}${entry.command}\n`
-      );
+      if (isTaintBlock) {
+        const label = "TAINT BLOCK".padEnd(10);
+        const by = entry.resolvedBy.padEnd(9);
+        const reason = entry.taint?.reason ? ` (${entry.taint.reason})` : "";
+        process.stdout.write(
+          `  ${time}   ${runtime}${MAGENTA}${label}${RESET}${by}${entry.command}${reason}\n`
+        );
+      } else {
+        const decision = entry.decision.toUpperCase().padEnd(10);
+        const by = entry.resolvedBy.padEnd(9);
+        const color = DECISION_COLORS[entry.decision] || "";
+        process.stdout.write(
+          `  ${time}   ${runtime}${color}${decision}${RESET}${by}${entry.command}\n`
+        );
+      }
     }
 
     process.stdout.write("\n");

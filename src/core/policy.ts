@@ -21,9 +21,10 @@ interface PolicyConfig {
   allow?: PolicyRule[];
   ask?: PolicyRule[];
   limits?: LimitRule[];
+  allowed_hosts?: string[];
 }
 
-const VALID_TOP_KEYS = new Set(["deny", "allow", "ask", "limits"]);
+const VALID_TOP_KEYS = new Set(["deny", "allow", "ask", "limits", "allowed_hosts"]);
 const VALID_RULE_KEYS = new Set(["command", "path", "tool", "match", "url"]);
 
 const DEFAULT_POLICY = `# AgentWall Policy
@@ -123,6 +124,16 @@ limits:
   - tool: "*"
     max: 200
     window: 300     # max 200 total tool calls per 5 minutes
+
+# ── Allowed hosts for taint tracking ────────────────────────────────────────
+# When a session is tainted (credential access detected), outbound network
+# calls are blocked unless the destination is in this list.
+allowed_hosts:
+  - api.anthropic.com
+  - api.openai.com
+  - github.com
+  - registry.npmjs.org
+  - pypi.org
 `;
 
 function escapeRegex(char: string): string {
@@ -565,6 +576,10 @@ export class PolicyEngine {
     }
 
     return { decision: "ask", reason: "policy" };
+  }
+
+  getAllowedHosts(): string[] {
+    return this.config.allowed_hosts ?? [];
   }
 
   static defaultYaml(): string {

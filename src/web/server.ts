@@ -13,8 +13,9 @@ import {
   unignoreServer,
   type ClientEntry,
 } from "../core/clients.js";
+import { getTaintState, type TaintState } from "../taint/taint.js";
 
-const VERSION = "0.8.1";
+const VERSION = "0.9.0";
 const DEFAULT_PORT = 7823;
 
 const MIME_TYPES: Record<string, string> = {
@@ -123,6 +124,10 @@ export class AgentWallWebServer {
 
   notifyLogEntry(entry: unknown): void {
     this.broadcast({ type: "log_entry", entry });
+  }
+
+  notifyTaintStateChanged(taint: TaintState): void {
+    this.broadcast({ type: "taint_changed", taint });
   }
 
   notifyClientActive(runtime: string): void {
@@ -248,6 +253,7 @@ export class AgentWallWebServer {
         policyPath: this.options.policyPath,
         logPath: this.options.logDir,
         pendingApprovals: pending.length,
+        taint: getTaintState(),
       }),
     );
   }

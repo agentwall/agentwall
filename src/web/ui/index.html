@@ -166,6 +166,25 @@
     gap: 1rem;
   }
   #approvalList .approval-card { display: block; }
+
+  .taint-warning {
+    background: #3d1f00;
+    border: 1px solid #f0883e;
+    border-radius: 8px;
+    padding: 0.875rem 1.25rem;
+    margin-bottom: 1rem;
+    color: #f0883e;
+    font-size: 0.875rem;
+    font-weight: 600;
+    display: none;
+  }
+  .taint-warning.visible { display: block; }
+  .taint-warning .taint-detail {
+    font-weight: 400;
+    color: #e1e4e8;
+    margin-top: 0.25rem;
+    font-size: 0.8125rem;
+  }
 </style>
 </head>
 <body>
@@ -181,6 +200,11 @@
 </nav>
 
 <div class="container">
+  <div id="taintBanner" class="taint-warning">
+    &#x26a0; Session tainted — credential access detected
+    <div class="taint-detail" id="taintDetail"></div>
+  </div>
+
   <div id="emptyState" class="empty-state">
     <h2>No pending approvals</h2>
     <p>Approval requests from your agents will appear here.</p>
@@ -294,6 +318,10 @@
       if (msg.type === "approval_resolved") {
         removeApproval(msg.id);
         updateTabTitle();
+      }
+
+      if (msg.type === "taint_changed") {
+        updateTaintBanner(msg.taint);
       }
     };
   }
@@ -410,8 +438,29 @@
       .catch(function () {});
   }
 
+  function updateTaintBanner(taint) {
+    var banner = document.getElementById("taintBanner");
+    var detail = document.getElementById("taintDetail");
+    if (!taint || !taint.tainted) {
+      banner.classList.remove("visible");
+      return;
+    }
+    banner.classList.add("visible");
+    detail.textContent = "Source: " + taint.sourcePath + " — outbound network calls to unknown hosts will be blocked";
+  }
+
+  function loadTaintState() {
+    fetch("/api/status")
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        if (data.taint) updateTaintBanner(data.taint);
+      })
+      .catch(function () {});
+  }
+
   connect();
   loadClientsSummary();
+  loadTaintState();
   updateTabTitle();
 })();
 </script>

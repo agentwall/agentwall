@@ -18,7 +18,8 @@ export type DecisionReason =
   | "policy"
   | "user"
   | "auto-allow"
-  | "rate-limit";
+  | "rate-limit"
+  | "taint-tracker";
 
 export type Decision = {
   decision: DecisionVerdict;
@@ -32,6 +33,13 @@ export type LimitRule = {
   window: number;
 };
 
+export interface TaintSnapshot {
+  tainted:    boolean;
+  reason:     string;
+  taintedAt:  string | null;
+  sourcePath: string;
+}
+
 export interface LogEntry {
   ts:         string;
   runtime:    Runtime;
@@ -42,6 +50,7 @@ export interface LogEntry {
   approvalId: string;
   sessionId:  string;
   agentId:    string;
+  taint?:     TaintSnapshot;
 }
 
 // ---------------------------------------------------------------------------

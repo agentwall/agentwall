@@ -25,6 +25,7 @@ import { EventLogger } from "../../core/logger.js";
 import { askUser, printDecision, useTtyInput, setWebApprovalQueue } from "../../core/prompt.js";
 import { ApprovalQueue } from "../../web/approval.js";
 import { AgentWallWebServer } from "../../web/server.js";
+import { checkAndMarkTaint, checkTaintViolation, getTaintState, resetTaint } from "../../taint/taint.js";
 import type {
   ActionProposal,
   DecisionVerdict,
@@ -34,7 +35,7 @@ import type {
   Runtime,
 } from "../../core/types.js";
 
-const VERSION = "0.7.0";
+const VERSION = "0.9.0";
 
 const CLIENT_NAME_TO_RUNTIME: [string, Runtime][] = [
   ["claude desktop", "claude-desktop"],
@@ -148,11 +149,13 @@ function buildLogEntry(
     approvalId: proposal.approvalId,
     sessionId: proposal.sessionId || "",
     agentId: proposal.agentId || "",
+    taint: getTaintState(),
   };
 }
 
 export async function startProxy(options: McpProxyOptions): Promise<void> {
   useTtyInput();
+  resetTaint();
 
   let webServer: AgentWallWebServer | null = null;
 
@@ -294,6 +297,23 @@ export async function startProxy(options: McpProxyOptions): Promise<void> {
       sessionId: "",
       agentId: client.getServerVersion()?.name ?? "",
     };
+
+    // Taint step 1: check if this call touches sensitive data
+    checkAndMarkTaint(toolName, toolArgs);
+
+    // Taint step 2: block outbound network calls from tainted sessions
+    const allowedHosts = policy.getAllowedHosts();
+    const taintCheck = checkTaintViolation(toolName, toolArgs, allowedHosts);
+
+    if (taintCheck.blocked) {
+      printDecision("deny", `${toolName}(${command})`, "taint violation");
+      logger.log(buildLogEntry(proposal, "deny", "taint-tracker"));
+      webServer?.notifyTaintStateChanged(getTaintState());
+      return {
+        content: [{ type: "text" as const, text: `AgentWall: ${taintCheck.reason}` }],
+        isError: true,
+      };
+    }
 
     const result = policy.evaluate(proposal);
 
