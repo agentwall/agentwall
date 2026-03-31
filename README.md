@@ -25,6 +25,8 @@ AgentWall enforces your rules at the proxy layer — outside the runtime, outsid
 
 ![AgentWall demo — Claude said "always allow." AgentWall blocked it anyway.](assets/demo.gif)
 
+> 📖 **Writeup:** [Your AI agent can read every credential on your machine](https://dev.to/ashwinaravind/your-ai-agent-can-read-every-credential-on-your-machine-cd0)
+
 ---
 
 ## The killer feature
@@ -270,7 +272,7 @@ Deletion rules are denied silently. Archive and modify prompt for approval. The 
 
 Why this works when OpenClaw's own guardrails failed: the policy lives in `~/.agentwall/policy.yaml` — outside the model's context window. Context compaction that wipes the model's safety instructions leaves this file untouched.
 
-See the [incident writeup](https://sfstandard.com/2026/02/25/openclaw-goes-rogue/) for the full timeline.
+See the [incident writeup](https://sfstandard.com/2026/02/25/openclaw-goes-rogue/) for the full timeline. For a technical deep-dive into how credential exfiltration works and how AgentWall stops it, read: [Your AI agent can read every credential on your machine](https://dev.to/ashwinaravind/your-ai-agent-can-read-every-credential-on-your-machine-cd0)
 
 ### Full default policy
 
