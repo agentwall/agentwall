@@ -77,6 +77,7 @@ Your YAML policy is the final word. Not the client. Not the model. You.
 - **Rate limiting** — cap tool calls per minute to catch runaway agent loops before they cause damage
 - **Inbox deletion prevention** — blocks `gog gmail trash/delete` commands and rate-limits bulk Gmail operations; would have stopped the [February 2026 OpenClaw incident](https://sfstandard.com/2026/02/25/openclaw-goes-rogue/) at call #1
 - **Fully reversible** — `agentwall undo` restores all original configs in one command
+- **Policy library** — community policies for gog, GitHub, 1Password, messaging, and more at [agentwall-registry](https://github.com/agentwall/agentwall-registry)
 
 ---
 
@@ -519,6 +520,20 @@ AgentWall addresses the following risks from the [OWASP Top 10 for Agentic Appli
 | ASI08 – Cascading Failures | Rate limiting catches runaway agent loops before they cause damage |
 
 AgentWall is a policy engine, not a security sandbox. See [What AgentWall does not protect against](#what-agentwall-does-not-protect-against) for an honest assessment of its limits.
+
+---
+
+## Policy library
+
+Ready-to-use policies for common tools — gog, GitHub CLI, 1Password, messaging, Homebrew, and more.
+
+```bash
+agentwall policy add gog
+agentwall policy add github
+agentwall policy add bundle/developer
+```
+
+Browse all policies → [github.com/agentwall/agentwall-registry](https://github.com/agentwall/agentwall-registry)
 
 ---
 
