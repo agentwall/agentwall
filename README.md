@@ -19,11 +19,11 @@
 
 ---
 
-Your AI agent has root access to your filesystem, your database, and your shell. Do you know what it's doing?
+Your AI agent can read `~/.aws/credentials`, pipe it to `curl`, and you'd never know. In February 2026, OpenClaw deleted a user's entire Gmail inbox in a runaway loop — 142 `gog gmail trash` calls before they noticed. The safety prompts built into Claude Desktop and OpenClaw run inside the model's context window, where a poisoned prompt or context compaction can wipe them out entirely.
 
-AgentWall is a runtime policy enforcement layer for locally-run AI agents. It intercepts every tool call via an MCP proxy for Claude Desktop, Cursor, Windsurf, and Claude Code — and via a native plugin for OpenClaw — enforcing your rules before anything executes. One command to install.
+AgentWall enforces your rules at the proxy layer — outside the runtime, outside the model's context, where nothing can override them. It intercepts every tool call before it executes across Claude Desktop, Cursor, Windsurf, Claude Code, and OpenClaw. One command to install.
 
-![AgentWall demo](assets/demo.gif)
+![AgentWall demo — Claude said "always allow." AgentWall blocked it anyway.](assets/demo.gif)
 
 ---
 
@@ -34,24 +34,48 @@ AI clients have their own approval flows. AgentWall ignores them.
 Claude Desktop approved the call. OpenClaw approved the call. AgentWall blocked both.
 
 ```
-18:14:47   mcp        DENY    policy   list_directory   ← BLOCKED despite Claude "Always allow"
-18:14:51   openclaw   DENY    policy   exec             ← BLOCKED despite OpenClaw approval
+18:14:47   mcp        DENY    policy   list_directory              ← BLOCKED despite Claude "Always allow"
+18:14:51   openclaw   DENY    policy   exec                        ← BLOCKED despite OpenClaw approval
+18:15:03   openclaw   DENY    policy   exec   gog gmail trash      ← BLOCKED (inbox deletion prevented)
 ```
 
 Your YAML policy is the final word. Not the client. Not the model. You.
+
+> AgentWall runs outside the model's context window. Context compaction, prompt injection, or a compromised tool cannot touch your policy file.
+
+---
+
+## Contents
+
+- [Features](#features)
+- [Install](#install)
+- [Quick start](#quick-start)
+- [Supported clients](#supported-clients)
+- [Web UI](#web-ui)
+- [OpenClaw](#openclaw)
+- [Policy](#policy)
+- [Rate limiting](#rate-limiting)
+- [Taint tracking](#taint-tracking)
+- [Audit log](#audit-log)
+- [Commands](#commands)
+- [How it works](#how-it-works)
+- [What AgentWall protects against](#what-agentwall-protects-against)
+- [What AgentWall does not protect against](#what-agentwall-does-not-protect-against)
+- [OWASP Agentic AI Top 10 coverage](#owasp-agentic-ai-top-10-coverage)
 
 ---
 
 ## Features
 
 - **Works everywhere** — Claude Desktop, Cursor, Windsurf, Claude Code, OpenClaw, any MCP client
-- **One command install** — `npx @agentwall/agentwall setup` auto-detects and wraps all your MCP servers
-- **Browser approval UI** — approve or deny tool calls from your browser, works in GUI clients with no terminal
+- **Taint tracking** — detects credential reads and blocks subsequent outbound network calls, stopping multi-step exfiltration before it completes
 - **YAML policy engine** — deny, allow, ask with glob matching, SQL content matching, path rules
-- **Taint tracking** — detects credential reads and blocks subsequent outbound network calls, stopping multi-step exfiltration attacks
-- **Independent audit log** — ground truth record of every tool call, regardless of what the model claims
+- **One command install** — `npx @agentwall/agentwall setup` auto-detects and wraps all your MCP servers
+- **Browser approval UI** — approve or deny tool calls from your browser; works in GUI clients with no terminal
+- **Independent audit log** — ground truth record of every tool call, regardless of what the model claims it did
 - **Hot-reload** — edit `~/.agentwall/policy.yaml` and changes apply instantly, no restart needed
-- **Rate limiting** — cap tool calls per minute to catch runaway agent loops
+- **Rate limiting** — cap tool calls per minute to catch runaway agent loops before they cause damage
+- **Inbox deletion prevention** — blocks `gog gmail trash/delete` commands and rate-limits bulk Gmail operations; would have stopped the [February 2026 OpenClaw incident](https://sfstandard.com/2026/02/25/openclaw-goes-rogue/) at call #1
 - **Fully reversible** — `agentwall undo` restores all original configs in one command
 
 ---
@@ -77,7 +101,7 @@ To verify protection is active:
 
 ```bash
 agentwall status
-# AgentWall v0.8.0
+# AgentWall v0.9.0
 # Protected: Claude Desktop (3 servers) · Cursor (1 server) · OpenClaw
 # Policy: ~/.agentwall/policy.yaml
 # Decisions today: 47 allowed · 0 blocked · 2 approved
@@ -106,7 +130,7 @@ openclaw gateway
 # MCP proxies spawn automatically and connect to the same UI
 ```
 
-**Boot order matters.** Start `agentwall ui` before the OpenClaw gateway and before opening AI clients. The gateway and MCP proxies detect the UI on startup and route approval requests to it. If the UI isn't running yet, they fall back to terminal prompts.
+> ⚠️ **Boot order matters.** Start `agentwall ui` before the OpenClaw gateway and before opening AI clients. The gateway and MCP proxies detect the UI on startup and route approval requests to it. If the UI isn't running yet, they fall back to terminal prompts.
 
 ---
 
@@ -155,7 +179,8 @@ openclaw plugins install agentwall --link
 ```
 
 The plugin runs independently of the MCP proxy. Both can run simultaneously, logging every decision to the same audit file regardless of which runtime triggered it.
-If you use `gog` for Gmail access, add email protection rules to your policy — see [Protect your email (gog)](#protect-your-email-gog) below.
+
+If you use `gog` for Gmail access, add email protection rules to your policy — see [Prevent inbox deletion (gog)](#prevent-inbox-deletion-gog) below.
 
 ---
 
@@ -204,12 +229,11 @@ ask:
 
 DROP and TRUNCATE blocked silently. DELETE and ALTER prompt for approval. Everything else runs normally. SQL matching is case-insensitive.
 
-### Protect your email (gog)
+### Prevent inbox deletion (gog)
 
-OpenClaw uses the `gog` CLI to access Gmail. Since `gog` runs as a shell process,
-AgentWall's native plugin intercepts it via `exec` — before it touches your inbox.
+OpenClaw uses the `gog` CLI to access Gmail. Since `gog` runs as a shell process, AgentWall's native plugin intercepts it via `exec` — before it touches your inbox.
 
-This is the policy that would have prevented the [OpenClaw inbox deletion incident](https://sfstandard.com/2026/02/25/openclaw-goes-rogue/):
+In February 2026, a runaway OpenClaw agent sent 142 `gog gmail trash` calls and deleted a user's entire inbox before they could intervene. This is the policy that would have stopped it at call #1. The agent's own guardrails didn't — they ran inside the context window, which the agent had already overwritten.
 
 ```yaml
 deny:
@@ -238,15 +262,14 @@ limits:
     match:
       command: "gog gmail*"
     max: 10
-    window: 60    # max 10 Gmail operations per minute
+    window: 60    # max 10 Gmail operations per minute — a loop of 142 never completes
 ```
 
-Deletion rules are denied silently. Archive and modify prompt for approval.
-The rate limit catches runaway bulk operations even if a rule is missed.
+Deletion rules are denied silently. Archive and modify prompt for approval. The rate limit catches runaway bulk operations even if a rule is missed.
 
-Why this works when OpenClaw's own guardrails fail: the policy lives in
-`~/.agentwall/policy.yaml` — outside the model's context window. Context
-compaction that wipes the model's safety instructions leaves this file untouched.
+Why this works when OpenClaw's own guardrails failed: the policy lives in `~/.agentwall/policy.yaml` — outside the model's context window. Context compaction that wipes the model's safety instructions leaves this file untouched.
+
+See the [incident writeup](https://sfstandard.com/2026/02/25/openclaw-goes-rogue/) for the full timeline.
 
 ### Full default policy
 
@@ -396,7 +419,7 @@ agentwall replay 20       # last 20 entries
 agentwall clear-logs      # remove all log files and start fresh
 ```
 
-The log is ground truth. If the model reports it only read one file but AgentWall logged 47 reads, the log is right.
+> If the model reports it only read one file but AgentWall logged 47 reads, the log is right.
 
 ---
 
@@ -466,22 +489,7 @@ After:
 - Common obfuscation patterns — `eval`, `base64 -d`
 - Database writes without approval — `DELETE`, `ALTER`, `UPDATE`
 - Multi-step exfiltration — taint tracking blocks credential read → network send chains
-- Email deletion via gog — deny trash/delete commands, rate-limit bulk Gmail operations
-
----
-
-## OWASP Agentic AI Top 10 coverage
-
-AgentWall addresses the following risks from the [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/):
-
-| Threat | How AgentWall helps |
-|---|---|
-| ASI02 – Tool Misuse & Exploitation | YAML policy engine blocks destructive tool calls before execution |
-| ASI03 – Identity & Privilege Abuse | Credential path protection, workspace boundary enforcement, and taint tracking |
-| ASI04 – Data Exfiltration | Taint tracking detects credential access and blocks subsequent outbound network calls |
-| ASI08 – Cascading Failures | Rate limiting catches runaway agent loops before they cause damage |
-
-AgentWall is a policy engine, not a security sandbox. See [what AgentWall does not protect against](#what-agentwall-does-not-protect-against) for an honest assessment of its limits.
+- Inbox deletion via gog — deny trash/delete commands, rate-limit bulk Gmail operations
 
 ---
 
@@ -496,6 +504,21 @@ AgentWall is a policy engine, not a security sandbox. See [what AgentWall does n
 **Multi-step attacks beyond taint tracking** — Taint tracking catches the most common pattern (read credentials → network exfiltration), but cannot catch all possible indirect chains (e.g. writing credentials to a world-readable file, then another process reads and sends them).
 
 AgentWall is a policy engine, not a security sandbox. The right complement is OS-level isolation — run your agent in a container with no credential access in the first place. AgentWall and OS isolation are complementary, not alternatives.
+
+---
+
+## OWASP Agentic AI Top 10 coverage
+
+AgentWall addresses the following risks from the [OWASP Top 10 for Agentic Applications 2026](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/):
+
+| Threat | How AgentWall helps |
+|---|---|
+| ASI02 – Tool Misuse & Exploitation | YAML policy engine blocks destructive tool calls before execution |
+| ASI03 – Identity & Privilege Abuse | Credential path protection, workspace boundary enforcement, and taint tracking |
+| ASI04 – Data Exfiltration | Taint tracking detects credential access and blocks subsequent outbound network calls |
+| ASI08 – Cascading Failures | Rate limiting catches runaway agent loops before they cause damage |
+
+AgentWall is a policy engine, not a security sandbox. See [What AgentWall does not protect against](#what-agentwall-does-not-protect-against) for an honest assessment of its limits.
 
 ---
 
