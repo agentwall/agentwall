@@ -15,35 +15,33 @@
 [![GitHub Stars](https://img.shields.io/github/stars/agentwall/agentwall?style=social)](https://github.com/agentwall/agentwall)
 [![GitHub commits](https://badgen.net/github/commits/agentwall/agentwall)](https://github.com/agentwall/agentwall/commits)
 
+```bash
+npx @agentwall/agentwall setup
+```
+
+![AgentWall demo — Claude said "always allow." AgentWall blocked it anyway.](assets/demo.gif)
+
 </div>
 
 ---
 
-Your AI agent can read `~/.aws/credentials`, pipe it to `curl`, and you'd never know. In February 2026, OpenClaw deleted a user's entire Gmail inbox in a runaway loop — 142 `gog gmail trash` calls before they noticed. The safety prompts built into Claude Desktop and OpenClaw run inside the model's context window, where a poisoned prompt or context compaction can wipe them out entirely.
-
-AgentWall enforces your rules at the proxy layer — outside the runtime, outside the model's context, where nothing can override them. It intercepts every tool call before it executes across Claude Desktop, Cursor, Windsurf, Claude Code, and OpenClaw. One command to install.
-
-![AgentWall demo — Claude said "always allow." AgentWall blocked it anyway.](assets/demo.gif)
-
-> 📖 **Writeup:** [Your AI agent can read every credential on your machine](https://dev.to/ashwinaravind/your-ai-agent-can-read-every-credential-on-your-machine-cd0)
-
----
-
-## The killer feature
-
-AI clients have their own approval flows. AgentWall ignores them.
-
-Claude Desktop approved the call. OpenClaw approved the call. AgentWall blocked both.
+Claude said **always allow**. OpenClaw said **always allow**. AgentWall blocked it anyway.
 
 ```
-18:14:47   mcp        DENY    policy   list_directory              ← BLOCKED despite Claude "Always allow"
-18:14:51   openclaw   DENY    policy   exec                        ← BLOCKED despite OpenClaw approval
-18:15:03   openclaw   DENY    policy   exec   gog gmail trash      ← BLOCKED (inbox deletion prevented)
+18:14:47   mcp        DENY    policy   list_directory         ← BLOCKED despite Claude "Always allow"
+18:14:51   openclaw   DENY    policy   exec                   ← BLOCKED despite OpenClaw approval
+18:15:03   openclaw   DENY    policy   exec   gog gmail trash ← BLOCKED (inbox deletion prevented)
 ```
 
 Your YAML policy is the final word. Not the client. Not the model. You.
 
-> AgentWall runs outside the model's context window. Context compaction, prompt injection, or a compromised tool cannot touch your policy file.
+> **Why this works when built-in safety fails:** AgentWall runs outside the model's context window. Context compaction, prompt injection, or a compromised tool cannot touch your policy file.
+
+---
+
+> ⚠️ **In February 2026**, a runaway OpenClaw agent sent 142 `gog gmail trash` calls and deleted a user's entire inbox. The safety prompts built into Claude Desktop and OpenClaw run inside the model's context window — where context compaction can wipe them out entirely. [AgentWall would have blocked it at call #1.](https://sfstandard.com/2026/02/25/openclaw-goes-rogue/)
+
+> 📖 **Writeup:** [Your AI agent can read every credential on your machine](https://dev.to/ashwinaravind/your-ai-agent-can-read-every-credential-on-your-machine-cd0)
 
 ---
 
